@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/L-ka080/DDB-6-case/internal/platform/httpserver"
 	"github.com/L-ka080/DDB-6-case/internal/platform/security"
 	"github.com/gin-gonic/gin"
 )
@@ -43,10 +44,5 @@ func Auth(parser TokenParser) gin.HandlerFunc {
 }
 
 func writeUnauthorized(c *gin.Context) {
-	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-		"error": gin.H{
-			"code":    "invalid_token",
-			"message": "invalid or expired access token",
-		},
-	})
+	httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
 }

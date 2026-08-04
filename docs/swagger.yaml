@@ -1,0 +1,233 @@
+basePath: /
+definitions:
+  httpserver.ErrorDetail:
+    properties:
+      code:
+        example: validation_error
+        type: string
+      message:
+        example: request body must be valid JSON
+        type: string
+    type: object
+  httpserver.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/httpserver.ErrorDetail'
+    type: object
+  httpserver.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  httpserver.ReadinessResponse:
+    properties:
+      status:
+        example: ready
+        type: string
+    type: object
+  user.AuthResult:
+    properties:
+      access_token:
+        example: <jwt_access_token>
+        type: string
+      expires_in:
+        example: 86400
+        type: integer
+      token_type:
+        example: Bearer
+        type: string
+      user:
+        $ref: '#/definitions/user.PublicUser'
+    type: object
+  user.LoginRequest:
+    properties:
+      login:
+        example: vadim
+        type: string
+      password:
+        example: example-password
+        type: string
+    required:
+    - login
+    - password
+    type: object
+  user.PublicUser:
+    properties:
+      created_at:
+        example: "2026-08-04T12:00:00Z"
+        type: string
+      id:
+        example: 1
+        type: integer
+      login:
+        example: vadim
+        type: string
+      name:
+        example: vadim
+        type: string
+      public_rating:
+        example: 0
+        type: number
+    type: object
+  user.RegisterRequest:
+    properties:
+      login:
+        example: vadim
+        maxLength: 32
+        minLength: 3
+        type: string
+      password:
+        example: example-password
+        minLength: 8
+        type: string
+    required:
+    - login
+    - password
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: grigorevvadim875@yandex.ru
+    name: Grigorev Vadim
+  description: Backend API проекта «Цепочка обмена».
+  title: Exchange Chain API
+  version: "1.0"
+paths:
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Проверяет логин и пароль и возвращает публичный профиль с JWT-токеном
+        доступа.
+      parameters:
+      - description: Учётные данные
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.AuthResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      summary: Вход пользователя
+      tags:
+      - auth
+  /api/v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Создаёт пользователя и возвращает публичный профиль с JWT-токеном
+        доступа.
+      parameters:
+      - description: Данные для регистрации
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/user.AuthResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      summary: Регистрация пользователя
+      tags:
+      - auth
+  /api/v1/me:
+    get:
+      description: Возвращает публичные данные пользователя из JWT-токена.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.PublicUser'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Профиль текущего пользователя
+      tags:
+      - users
+  /health:
+    get:
+      description: Возвращает состояние HTTP-процесса без проверки внешних зависимостей.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpserver.HealthResponse'
+      summary: Проверка работоспособности
+      tags:
+      - system
+  /ready:
+    get:
+      description: Проверяет доступность PostgreSQL и сообщает, готово ли приложение
+        принимать запросы.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpserver.ReadinessResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      summary: Проверка готовности
+      tags:
+      - system
+schemes:
+- http
+securityDefinitions:
+  BearerAuth:
+    description: 'Введите токен в формате: Bearer <access_token>'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

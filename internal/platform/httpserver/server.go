@@ -45,13 +45,14 @@ func New(port string, database Pinger, routes Routes) *Server {
 		gin.Logger(),
 		gin.CustomRecovery(func(c *gin.Context, recovered any) {
 			log.Printf("recovered from HTTP handler panic: %v", recovered)
-			writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
+			WriteError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		}),
 		cors(),
 	)
 
 	router.GET("/health", healthHandler)
 	router.GET("/ready", readyHandler(database))
+	router.GET("/swagger/*any", swaggerHandler())
 
 	api := router.Group("/api/v1")
 	auth := api.Group("/auth")
@@ -63,10 +64,10 @@ func New(port string, database Pinger, routes Routes) *Server {
 	protected.GET("/me", routes.Me)
 
 	router.NoRoute(func(c *gin.Context) {
-		writeError(c, http.StatusNotFound, "not_found", "resource not found")
+		WriteError(c, http.StatusNotFound, "not_found", "resource not found")
 	})
 	router.NoMethod(func(c *gin.Context) {
-		writeError(c, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		WriteError(c, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 	})
 
 	return &Server{
@@ -96,10 +97,27 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
+// healthHandler godoc
+//
+// @Summary Проверка работоспособности
+// @Description Возвращает состояние HTTP-процесса без проверки внешних зависимостей.
+// @Tags system
+// @Produce json
+// @Success 200 {object} HealthResponse
+// @Router /health [get]
 func healthHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
 }
 
+// readyHandler godoc
+//
+// @Summary Проверка готовности
+// @Description Проверяет доступность PostgreSQL и сообщает, готово ли приложение принимать запросы.
+// @Tags system
+// @Produce json
+// @Success 200 {object} ReadinessResponse
+// @Failure 503 {object} ErrorResponse
+// @Router /ready [get]
 func readyHandler(database Pinger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), readyCheckTimeout)
@@ -107,21 +125,12 @@ func readyHandler(database Pinger) gin.HandlerFunc {
 
 		if err := database.Ping(ctx); err != nil {
 			log.Printf("readiness check failed: %v", err)
-			writeError(c, http.StatusServiceUnavailable, "database_unavailable", "database is unavailable")
+			WriteError(c, http.StatusServiceUnavailable, "database_unavailable", "database is unavailable")
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+		c.JSON(http.StatusOK, ReadinessResponse{Status: "ready"})
 	}
-}
-
-func writeError(c *gin.Context, status int, code, message string) {
-	c.AbortWithStatusJSON(status, gin.H{
-		"error": gin.H{
-			"code":    code,
-			"message": message,
-		},
-	})
 }
 
 func cors() gin.HandlerFunc {

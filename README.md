@@ -22,6 +22,7 @@ API доступен на `http://localhost:8080`:
 - `POST /api/v1/auth/register` — регистрация;
 - `POST /api/v1/auth/login` — вход;
 - `GET /api/v1/me` — профиль по JWT.
+- `GET /swagger/index.html` — интерактивная Swagger UI.
 
 Базовый CORS разрешает локальный frontend на портах `3000` и `5173` для `localhost` и `127.0.0.1`.
 
@@ -68,6 +69,22 @@ curl http://localhost:8080/api/v1/me \
   -H 'Authorization: Bearer <access_token>'
 ```
 
+## Swagger
+
+После запуска приложения интерактивная документация доступна по адресу [http://localhost:8080/swagger/index.html](http://localhost:8080/swagger/index.html).
+
+Для авторизованного запроса нажмите **Authorize** и вставьте значение целиком в формате `Bearer <access_token>`. Swagger использует API-key схему и не добавляет префикс `Bearer` автоматически.
+
+Общая информация API находится в `cmd/api/main.go`.
+
+После изменения Swagger-аннотаций перегенерируйте документацию из корня проекта:
+
+```bash
+swag init -g cmd/api/main.go -o docs --parseInternal
+```
+
+Каталог `docs/` генерируется автоматически — не редактируйте его вручную и добавляйте в коммит вместе с изменёнными аннотациями. Документация подключена к бинарнику через blank import, поэтому после генерации приложение нужно пересобрать и перезапустить.
+
 ## Проверки
 
 ```bash
@@ -93,4 +110,3 @@ docker run --rm -v "$(pwd):/app" -w /app golangci/golangci-lint:v2.5.0 golangci-
 - `JWT_TTL` — время жизни access token, например `168h`.
 
 ## Пока не реализовано
-

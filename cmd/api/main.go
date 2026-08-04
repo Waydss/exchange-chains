@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	_ "github.com/L-ka080/DDB-6-case/docs"
 	"github.com/L-ka080/DDB-6-case/internal/config"
 	"github.com/L-ka080/DDB-6-case/internal/platform/database"
 	"github.com/L-ka080/DDB-6-case/internal/platform/httpserver"
@@ -17,6 +18,21 @@ import (
 	"github.com/L-ka080/DDB-6-case/internal/user"
 )
 
+// @title Exchange Chain API
+// @version 1.0
+// @description Backend API проекта «Цепочка обмена».
+//
+// @contact.name Grigorev Vadim
+// @contact.email grigorevvadim875@yandex.ru
+//
+// @host localhost:8080
+// @BasePath /
+// @schemes http
+//
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Введите токен в формате: Bearer <access_token>
 func main() {
 	if err := run(); err != nil {
 		log.Printf("application stopped with error: %v", err)

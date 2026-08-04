@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	_ "github.com/L-ka080/DDB-6-case/docs"
 	"github.com/gin-gonic/gin"
 )
 
@@ -79,6 +80,49 @@ func TestCORS(t *testing.T) {
 	}
 	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:5173" {
 		t.Fatalf("Access-Control-Allow-Origin = %q", got)
+	}
+}
+
+func TestSwagger(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	server := New("8080", pingFunc(func(context.Context) error { return nil }), testRoutes())
+
+	tests := []struct {
+		path        string
+		contentType string
+		bodyPart    string
+	}{
+		{
+			path:        "/swagger/index.html",
+			contentType: "text/html",
+			bodyPart:    "Swagger UI",
+		},
+		{
+			path:        "/swagger/doc.json",
+			contentType: "application/json",
+			bodyPart:    "Exchange Chain API",
+		},
+		{
+			path:        "/swagger/swagger-ui.css",
+			contentType: "text/css",
+			bodyPart:    ".swagger-ui",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			response := performRequest(server, http.MethodGet, tt.path, "")
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+			}
+			if got := response.Header().Get("Content-Type"); !strings.Contains(got, tt.contentType) {
+				t.Fatalf("Content-Type = %q, want it to contain %q", got, tt.contentType)
+			}
+			if got := response.Body.String(); !strings.Contains(got, tt.bodyPart) {
+				t.Fatalf("body does not contain %q", tt.bodyPart)
+			}
+		})
 	}
 }
 
