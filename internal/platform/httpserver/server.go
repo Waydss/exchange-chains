@@ -1,0 +1,151 @@
+// Package httpserver configures and runs the application HTTP server.
+package httpserver
+
+import (
+	"context"
+	"errors"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+)
+
+const (
+	readHeaderTimeout = 5 * time.Second
+	readTimeout       = 10 * time.Second
+	writeTimeout      = 10 * time.Second
+	idleTimeout       = 60 * time.Second
+	readyCheckTimeout = 2 * time.Second
+)
+
+// Pinger is the database capability required by the readiness endpoint.
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
+// Routes contains the application handlers mounted by the HTTP server.
+type Routes struct {
+	Register       gin.HandlerFunc
+	Login          gin.HandlerFunc
+	Me             gin.HandlerFunc
+	AuthMiddleware gin.HandlerFunc
+}
+
+// Server owns the HTTP transport and its lifecycle.
+type Server struct {
+	httpServer *http.Server
+}
+
+// New configures the Gin router and HTTP server.
+func New(port string, database Pinger, routes Routes) *Server {
+	router := gin.New()
+	router.HandleMethodNotAllowed = true
+	router.Use(
+		gin.Logger(),
+		gin.CustomRecovery(func(c *gin.Context, recovered any) {
+			log.Printf("recovered from HTTP handler panic: %v", recovered)
+			writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
+		}),
+		cors(),
+	)
+
+	router.GET("/health", healthHandler)
+	router.GET("/ready", readyHandler(database))
+
+	api := router.Group("/api/v1")
+	auth := api.Group("/auth")
+	auth.POST("/register", routes.Register)
+	auth.POST("/login", routes.Login)
+
+	protected := api.Group("")
+	protected.Use(routes.AuthMiddleware)
+	protected.GET("/me", routes.Me)
+
+	router.NoRoute(func(c *gin.Context) {
+		writeError(c, http.StatusNotFound, "not_found", "resource not found")
+	})
+	router.NoMethod(func(c *gin.Context) {
+		writeError(c, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+	})
+
+	return &Server{
+		httpServer: &http.Server{
+			Addr:              ":" + port,
+			Handler:           router,
+			ReadHeaderTimeout: readHeaderTimeout,
+			ReadTimeout:       readTimeout,
+			WriteTimeout:      writeTimeout,
+			IdleTimeout:       idleTimeout,
+		},
+	}
+}
+
+// Run starts accepting HTTP requests and blocks until the server stops.
+func (s *Server) Run() error {
+	err := s.httpServer.ListenAndServe()
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+
+	return nil
+}
+
+// Shutdown gracefully stops the HTTP server.
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
+}
+
+func healthHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func readyHandler(database Pinger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), readyCheckTimeout)
+		defer cancel()
+
+		if err := database.Ping(ctx); err != nil {
+			log.Printf("readiness check failed: %v", err)
+			writeError(c, http.StatusServiceUnavailable, "database_unavailable", "database is unavailable")
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+	}
+}
+
+func writeError(c *gin.Context, status int, code, message string) {
+	c.AbortWithStatusJSON(status, gin.H{
+		"error": gin.H{
+			"code":    code,
+			"message": message,
+		},
+	})
+}
+
+func cors() gin.HandlerFunc {
+	allowedOrigins := map[string]struct{}{
+		"http://localhost:3000": {},
+		"http://localhost:5173": {},
+		"http://127.0.0.1:3000": {},
+		"http://127.0.0.1:5173": {},
+	}
+
+	return func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+		if _, ok := allowedOrigins[origin]; ok {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
+			c.Header("Vary", "Origin")
+		}
+
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
+}
