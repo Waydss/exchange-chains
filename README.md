@@ -1,6 +1,6 @@
 # Цепочка обмена — backend
 
-Backend MVP для многостороннего обмена вещами. Сейчас доступны регистрация по логину и паролю, JWT-авторизация и получение собственного публичного профиля.
+Backend MVP для многостороннего обмена вещами. Доступны регистрация с именем, JWT-авторизация, публичный профиль и создание предметов с фотографиями.
 
 ## Требования
 
@@ -22,7 +22,10 @@ API доступен на `http://localhost:8080`:
 - `POST /api/v1/auth/register` — регистрация;
 - `POST /api/v1/auth/login` — вход;
 - `GET /api/v1/me` — профиль по JWT.
+- `POST /api/v1/items` — создание предмета по JWT;
 - `GET /swagger/index.html` — интерактивная Swagger UI.
+
+Загруженные фотографии доступны по относительным URL вида `/uploads/items/{item_id}/{filename}`.
 
 Базовый CORS разрешает локальный frontend на портах `3000` и `5173` для `localhost` и `127.0.0.1`.
 
@@ -51,7 +54,7 @@ docker compose --profile tools run --rm migrate -path=/migrations -database="pos
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"login":"vadim","password":"password123"}'
+  -d '{"login":"vadim","password":"password123","name":"Вадим"}'
 ```
 
 Вход:
@@ -69,6 +72,24 @@ curl http://localhost:8080/api/v1/me \
   -H 'Authorization: Bearer <access_token>'
 ```
 
+Создание предмета с несколькими фотографиями:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/items \
+  -H 'Authorization: Bearer <access_token>' \
+  -F 'title=Гитара Yamaha F310, 6 струн' \
+  -F 'description=Исправна, есть небольшие царапины' \
+  -F 'condition=good' \
+  -F 'category_name=Гитары' \
+  -F 'price_min=40000' \
+  -F 'price_max=50000' \
+  -F 'wanted_category_name=Палатки' \
+  -F 'photos=@/path/to/photo-1.jpg' \
+  -F 'photos=@/path/to/photo-2.webp'
+```
+
+Фотографии необязательны. Допускается не более 5 файлов по 10 МиБ каждый; поддерживаются JPEG, PNG и WEBP.
+
 ## Swagger
 
 После запуска приложения интерактивная документация доступна по адресу [http://localhost:8080/swagger/index.html](http://localhost:8080/swagger/index.html).
@@ -80,7 +101,7 @@ curl http://localhost:8080/api/v1/me \
 После изменения Swagger-аннотаций перегенерируйте документацию из корня проекта:
 
 ```bash
-swag init -g cmd/api/main.go -o docs --parseInternal
+go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g cmd/api/main.go -o docs --parseInternal
 ```
 
 Каталог `docs/` генерируется автоматически — не редактируйте его вручную и добавляйте в коммит вместе с изменёнными аннотациями. Документация подключена к бинарнику через blank import, поэтому после генерации приложение нужно пересобрать и перезапустить.
@@ -108,5 +129,14 @@ docker run --rm -v "$(pwd):/app" -w /app golangci/golangci-lint:v2.5.0 golangci-
 - `SHUTDOWN_TIMEOUT` — таймаут graceful shutdown в формате Go duration, например `10s`.
 - `JWT_SECRET` — секрет подписи access token;
 - `JWT_TTL` — время жизни access token, например `168h`.
+- `UPLOAD_DIR` — директория для загруженных файлов;
+- `MAX_UPLOAD_SIZE` — максимальный размер одной фотографии в байтах;
+- `MAX_ITEM_PHOTOS` — максимальное количество фотографий предмета.
+
+При запуске через Docker файлы хранятся в `/app/uploads` внутри backend-контейнера и сохраняются в именованном volume `item_uploads` после пересоздания контейнера.
 
 ## Пока не реализовано
+
+- просмотр, изменение и удаление предметов;
+- matching и построение цепочек обмена;
+- облачное хранилище, сжатие и модерация изображений.

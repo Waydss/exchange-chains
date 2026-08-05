@@ -47,13 +47,13 @@ func TestRegisterHandler(t *testing.T) {
 	}{
 		{
 			name:       "created",
-			body:       `{"login":"vadim","password":"password123"}`,
+			body:       `{"login":"vadim","password":"password123","name":"Вадим"}`,
 			service:    handlerServiceStub{registerResult: authResult},
 			wantStatus: http.StatusCreated,
 		},
 		{
 			name:       "occupied login",
-			body:       `{"login":"vadim","password":"password123"}`,
+			body:       `{"login":"vadim","password":"password123","name":"Вадим"}`,
 			service:    handlerServiceStub{registerError: ErrLoginAlreadyExists},
 			wantStatus: http.StatusConflict,
 			wantCode:   "login_already_exists",
@@ -83,6 +83,9 @@ func TestRegisterHandler(t *testing.T) {
 				t.Fatalf("body = %s, want error code %q", response.Body.String(), tt.wantCode)
 			}
 			assertNoPrivateFields(t, response.Body.String())
+			if tt.wantStatus == http.StatusCreated && !strings.Contains(response.Body.String(), `"name":"Вадим"`) {
+				t.Fatalf("body = %s, want registered user name", response.Body.String())
+			}
 		})
 	}
 }
@@ -185,7 +188,7 @@ func testAuthResult() AuthResult {
 		User: PublicUser{
 			ID:           7,
 			Login:        "vadim",
-			Name:         "",
+			Name:         "Вадим",
 			PublicRating: 0,
 			CreatedAt:    time.Date(2026, time.August, 3, 17, 0, 0, 0, time.UTC),
 		},

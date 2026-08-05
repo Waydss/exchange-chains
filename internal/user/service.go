@@ -15,6 +15,8 @@ const (
 	maxLoginLength    = 32
 	minPasswordLength = 8
 	maxPasswordBytes  = 72
+	minNameLength     = 2
+	maxNameLength     = 100
 )
 
 var loginPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_]*$`)
@@ -50,10 +52,14 @@ func NewService(repository Repository, passwordHasher PasswordHasher, tokenProvi
 // Register creates an account and returns a new access token.
 func (s *Service) Register(ctx context.Context, input RegisterInput) (AuthResult, error) {
 	login := normalizeLogin(input.Login)
+	name := strings.TrimSpace(input.Name)
 	if err := validateLogin(login); err != nil {
 		return AuthResult{}, err
 	}
 	if err := validatePassword(input.Password); err != nil {
+		return AuthResult{}, err
+	}
+	if err := validateName(name); err != nil {
 		return AuthResult{}, err
 	}
 
@@ -73,6 +79,7 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (AuthResult
 	createdUser, err := s.repository.Create(ctx, CreateUserParams{
 		Login:        login,
 		PasswordHash: passwordHash,
+		Name:         name,
 	})
 	if err != nil {
 		return AuthResult{}, fmt.Errorf("persist registered user: %w", err)
@@ -158,6 +165,15 @@ func validatePassword(password string) error {
 	}
 	if len(password) > maxPasswordBytes {
 		return &ValidationError{Message: "password must not exceed 72 bytes"}
+	}
+
+	return nil
+}
+
+func validateName(name string) error {
+	length := utf8.RuneCountInString(name)
+	if length < minNameLength || length > maxNameLength {
+		return &ValidationError{Message: "name must contain between 2 and 100 characters"}
 	}
 
 	return nil

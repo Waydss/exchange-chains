@@ -20,7 +20,7 @@ func (fn pingFunc) Ping(ctx context.Context) error {
 
 func TestHealth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	server := New("8080", pingFunc(func(context.Context) error { return nil }), testRoutes())
+	server := New("8080", pingFunc(func(context.Context) error { return nil }), t.TempDir(), testRoutes())
 
 	response := performRequest(server, http.MethodGet, "/health", "")
 
@@ -56,7 +56,7 @@ func TestReady(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := New("8080", pingFunc(func(context.Context) error { return tt.pingError }), testRoutes())
+			server := New("8080", pingFunc(func(context.Context) error { return tt.pingError }), t.TempDir(), testRoutes())
 			response := performRequest(server, http.MethodGet, "/ready", "")
 
 			if response.Code != tt.wantStatus {
@@ -71,7 +71,7 @@ func TestReady(t *testing.T) {
 
 func TestCORS(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	server := New("8080", pingFunc(func(context.Context) error { return nil }), testRoutes())
+	server := New("8080", pingFunc(func(context.Context) error { return nil }), t.TempDir(), testRoutes())
 
 	response := performRequest(server, http.MethodOptions, "/health", "http://localhost:5173")
 
@@ -85,7 +85,7 @@ func TestCORS(t *testing.T) {
 
 func TestSwagger(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	server := New("8080", pingFunc(func(context.Context) error { return nil }), testRoutes())
+	server := New("8080", pingFunc(func(context.Context) error { return nil }), t.TempDir(), testRoutes())
 
 	tests := []struct {
 		path        string
@@ -128,7 +128,7 @@ func TestSwagger(t *testing.T) {
 
 func TestHTTPErrorFormat(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	server := New("8080", pingFunc(func(context.Context) error { return nil }), testRoutes())
+	server := New("8080", pingFunc(func(context.Context) error { return nil }), t.TempDir(), testRoutes())
 
 	tests := []struct {
 		name       string
@@ -179,6 +179,7 @@ func testRoutes() Routes {
 		Register:       noop,
 		Login:          noop,
 		Me:             noop,
+		CreateItem:     noop,
 		AuthMiddleware: pass,
 	}
 }

@@ -28,11 +28,11 @@ func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 // Create inserts a user and returns database-generated public fields.
 func (r *PostgresRepository) Create(ctx context.Context, params CreateUserParams) (User, error) {
 	const query = `
-		INSERT INTO users (login, password_hash)
-		VALUES ($1, $2)
+		INSERT INTO users (login, password_hash, name)
+		VALUES ($1, $2, $3)
 		RETURNING id, login, password_hash, name, public_rating, shadow_rating, created_at, updated_at`
 
-	createdUser, err := scanUser(r.pool.QueryRow(ctx, query, params.Login, params.PasswordHash))
+	createdUser, err := scanUser(r.pool.QueryRow(ctx, query, params.Login, params.PasswordHash, params.Name))
 	if err != nil {
 		var postgresError *pgconn.PgError
 		if errors.As(err, &postgresError) &&

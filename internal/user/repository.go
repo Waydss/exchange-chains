@@ -6,6 +6,7 @@ import "context"
 type CreateUserParams struct {
 	Login        string
 	PasswordHash string
+	Name         string
 }
 
 // Repository defines user persistence operations required by the service.

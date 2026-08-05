@@ -31,7 +31,7 @@ func NewHandler(service HandlerService) *Handler {
 // Register godoc
 //
 // @Summary Регистрация пользователя
-// @Description Создаёт пользователя и возвращает публичный профиль с JWT-токеном доступа.
+// @Description Создаёт пользователя с обязательным именем и возвращает публичный профиль с JWT-токеном доступа.
 // @Tags auth
 // @Accept json
 // @Produce json

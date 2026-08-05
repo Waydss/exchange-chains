@@ -33,6 +33,7 @@ func (r *fakeRepository) Create(_ context.Context, params user.CreateUserParams)
 		ID:           r.nextID,
 		Login:        params.Login,
 		PasswordHash: params.PasswordHash,
+		Name:         params.Name,
 		CreatedAt:    time.Date(2026, time.August, 3, 17, 0, 0, 0, time.UTC),
 		UpdatedAt:    time.Date(2026, time.August, 3, 17, 0, 0, 0, time.UTC),
 	}
@@ -76,6 +77,7 @@ func TestRegisterSuccess(t *testing.T) {
 	result, err := service.Register(context.Background(), user.RegisterInput{
 		Login:    "  Vadim  ",
 		Password: "password123",
+		Name:     "  Вадим  ",
 	})
 	if err != nil {
 		t.Fatalf("register: %v", err)
@@ -83,6 +85,9 @@ func TestRegisterSuccess(t *testing.T) {
 
 	if result.User.Login != "vadim" {
 		t.Fatalf("login = %q, want normalized login", result.User.Login)
+	}
+	if result.User.Name != "Вадим" {
+		t.Fatalf("name = %q, want normalized name", result.User.Name)
 	}
 	if result.AccessToken != "access-token" || result.TokenType != "Bearer" || result.ExpiresIn != 86400 {
 		t.Fatalf("auth result = %+v", result)
@@ -102,6 +107,7 @@ func TestRegisterRejectsOccupiedLogin(t *testing.T) {
 	_, err := service.Register(context.Background(), user.RegisterInput{
 		Login:    "VADIM",
 		Password: "password123",
+		Name:     "Вадим",
 	})
 	if !errors.Is(err, user.ErrLoginAlreadyExists) {
 		t.Fatalf("Register() error = %v, want ErrLoginAlreadyExists", err)
@@ -114,6 +120,7 @@ func TestRegisterRejectsShortPassword(t *testing.T) {
 	_, err := service.Register(context.Background(), user.RegisterInput{
 		Login:    "vadim",
 		Password: "short",
+		Name:     "Вадим",
 	})
 	assertValidationError(t, err)
 }
@@ -124,6 +131,7 @@ func TestRegisterRejectsPasswordOverBcryptLimit(t *testing.T) {
 	_, err := service.Register(context.Background(), user.RegisterInput{
 		Login:    "vadim",
 		Password: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Name:     "Вадим",
 	})
 	assertValidationError(t, err)
 }
@@ -134,6 +142,18 @@ func TestRegisterRejectsInvalidLogin(t *testing.T) {
 	_, err := service.Register(context.Background(), user.RegisterInput{
 		Login:    "bad login",
 		Password: "password123",
+		Name:     "Вадим",
+	})
+	assertValidationError(t, err)
+}
+
+func TestRegisterRejectsEmptyName(t *testing.T) {
+	service := newService(newFakeRepository())
+
+	_, err := service.Register(context.Background(), user.RegisterInput{
+		Login:    "vadim",
+		Password: "password123",
+		Name:     "   ",
 	})
 	assertValidationError(t, err)
 }

@@ -26,6 +26,87 @@ definitions:
         example: ready
         type: string
     type: object
+  item.CategoryResponse:
+    properties:
+      id:
+        example: 1
+        type: integer
+      name:
+        example: Гитары
+        type: string
+    type: object
+  item.Condition:
+    enum:
+    - new
+    - like_new
+    - good
+    - fair
+    - poor
+    type: string
+    x-enum-varnames:
+    - ConditionNew
+    - ConditionLikeNew
+    - ConditionGood
+    - ConditionFair
+    - ConditionPoor
+  item.CreateResponse:
+    properties:
+      category:
+        $ref: '#/definitions/item.CategoryResponse'
+      condition:
+        allOf:
+        - $ref: '#/definitions/item.Condition'
+        example: good
+      created_at:
+        example: "2026-08-05T15:00:00Z"
+        type: string
+      description:
+        example: Исправна, есть небольшие царапины
+        type: string
+      id:
+        example: 101
+        type: integer
+      photos:
+        items:
+          $ref: '#/definitions/item.PhotoResponse'
+        type: array
+      price_max:
+        example: 50000
+        type: integer
+      price_min:
+        example: 40000
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/item.Status'
+        example: searching
+      title:
+        example: Гитара Yamaha F310, 6 струн
+        type: string
+      wanted_category:
+        $ref: '#/definitions/item.CategoryResponse'
+    type: object
+  item.PhotoResponse:
+    properties:
+      id:
+        example: 501
+        type: integer
+      url:
+        example: /uploads/items/101/7d9f03c7.webp
+        type: string
+    type: object
+  item.Status:
+    enum:
+    - searching
+    - in_chain
+    - exchanged
+    - archived
+    type: string
+    x-enum-varnames:
+    - StatusSearching
+    - StatusInChain
+    - StatusExchanged
+    - StatusArchived
   user.AuthResult:
     properties:
       access_token:
@@ -77,12 +158,18 @@ definitions:
         maxLength: 32
         minLength: 3
         type: string
+      name:
+        example: Вадим
+        maxLength: 100
+        minLength: 2
+        type: string
       password:
         example: example-password
         minLength: 8
         type: string
     required:
     - login
+    - name
     - password
     type: object
 host: localhost:8080
@@ -133,8 +220,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Создаёт пользователя и возвращает публичный профиль с JWT-токеном
-        доступа.
+      description: Создаёт пользователя с обязательным именем и возвращает публичный
+        профиль с JWT-токеном доступа.
       parameters:
       - description: Данные для регистрации
         in: body
@@ -164,6 +251,95 @@ paths:
       summary: Регистрация пользователя
       tags:
       - auth
+  /api/v1/items:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Создаёт предмет текущего пользователя и сохраняет до пяти фотографий.
+      parameters:
+      - description: Название предмета
+        in: formData
+        name: title
+        required: true
+        type: string
+      - description: Описание предмета
+        in: formData
+        name: description
+        type: string
+      - description: Состояние
+        enum:
+        - new
+        - like_new
+        - good
+        - fair
+        - poor
+        in: formData
+        name: condition
+        required: true
+        type: string
+      - description: Категория предмета
+        in: formData
+        name: category_name
+        required: true
+        type: string
+      - description: Минимальная цена в рублях
+        in: formData
+        name: price_min
+        required: true
+        type: integer
+      - description: Максимальная цена в рублях
+        in: formData
+        name: price_max
+        required: true
+        type: integer
+      - description: Желаемая категория обмена
+        in: formData
+        name: wanted_category_name
+        required: true
+        type: string
+      - collectionFormat: multi
+        description: Фотографии JPEG, PNG или WEBP
+        in: formData
+        items:
+          type: file
+        name: photos
+        type: array
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/item.CreateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "415":
+          description: Unsupported Media Type
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Создание предмета
+      tags:
+      - items
   /api/v1/me:
     get:
       description: Возвращает публичные данные пользователя из JWT-токена.

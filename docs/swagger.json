@@ -69,7 +69,7 @@
         },
         "/api/v1/auth/register": {
             "post": {
-                "description": "Создаёт пользователя и возвращает публичный профиль с JWT-токеном доступа.",
+                "description": "Создаёт пользователя с обязательным именем и возвращает публичный профиль с JWT-токеном доступа.",
                 "consumes": [
                     "application/json"
                 ],
@@ -106,6 +106,137 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/items": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Создаёт предмет текущего пользователя и сохраняет до пяти фотографий.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "items"
+                ],
+                "summary": "Создание предмета",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Название предмета",
+                        "name": "title",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Описание предмета",
+                        "name": "description",
+                        "in": "formData"
+                    },
+                    {
+                        "enum": [
+                            "new",
+                            "like_new",
+                            "good",
+                            "fair",
+                            "poor"
+                        ],
+                        "type": "string",
+                        "description": "Состояние",
+                        "name": "condition",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Категория предмета",
+                        "name": "category_name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Минимальная цена в рублях",
+                        "name": "price_min",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Максимальная цена в рублях",
+                        "name": "price_max",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Желаемая категория обмена",
+                        "name": "wanted_category_name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "file"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Фотографии JPEG, PNG или WEBP",
+                        "name": "photos",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/item.CreateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "415": {
+                        "description": "Unsupported Media Type",
                         "schema": {
                             "$ref": "#/definitions/httpserver.ErrorResponse"
                         }
@@ -249,6 +380,121 @@
                 }
             }
         },
+        "item.CategoryResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Гитары"
+                }
+            }
+        },
+        "item.Condition": {
+            "type": "string",
+            "enum": [
+                "new",
+                "like_new",
+                "good",
+                "fair",
+                "poor"
+            ],
+            "x-enum-varnames": [
+                "ConditionNew",
+                "ConditionLikeNew",
+                "ConditionGood",
+                "ConditionFair",
+                "ConditionPoor"
+            ]
+        },
+        "item.CreateResponse": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "$ref": "#/definitions/item.CategoryResponse"
+                },
+                "condition": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/item.Condition"
+                        }
+                    ],
+                    "example": "good"
+                },
+                "created_at": {
+                    "type": "string",
+                    "example": "2026-08-05T15:00:00Z"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Исправна, есть небольшие царапины"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 101
+                },
+                "photos": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.PhotoResponse"
+                    }
+                },
+                "price_max": {
+                    "type": "integer",
+                    "example": 50000
+                },
+                "price_min": {
+                    "type": "integer",
+                    "example": 40000
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/item.Status"
+                        }
+                    ],
+                    "example": "searching"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Гитара Yamaha F310, 6 струн"
+                },
+                "wanted_category": {
+                    "$ref": "#/definitions/item.CategoryResponse"
+                }
+            }
+        },
+        "item.PhotoResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "example": 501
+                },
+                "url": {
+                    "type": "string",
+                    "example": "/uploads/items/101/7d9f03c7.webp"
+                }
+            }
+        },
+        "item.Status": {
+            "type": "string",
+            "enum": [
+                "searching",
+                "in_chain",
+                "exchanged",
+                "archived"
+            ],
+            "x-enum-varnames": [
+                "StatusSearching",
+                "StatusInChain",
+                "StatusExchanged",
+                "StatusArchived"
+            ]
+        },
         "user.AuthResult": {
             "type": "object",
             "properties": {
@@ -315,6 +561,7 @@
             "type": "object",
             "required": [
                 "login",
+                "name",
                 "password"
             ],
             "properties": {
@@ -323,6 +570,12 @@
                     "maxLength": 32,
                     "minLength": 3,
                     "example": "vadim"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 2,
+                    "example": "Вадим"
                 },
                 "password": {
                     "type": "string",

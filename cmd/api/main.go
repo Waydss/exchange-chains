@@ -10,11 +10,14 @@ import (
 	"syscall"
 
 	_ "github.com/L-ka080/DDB-6-case/docs"
+	"github.com/L-ka080/DDB-6-case/internal/category"
 	"github.com/L-ka080/DDB-6-case/internal/config"
+	"github.com/L-ka080/DDB-6-case/internal/item"
 	"github.com/L-ka080/DDB-6-case/internal/platform/database"
 	"github.com/L-ka080/DDB-6-case/internal/platform/httpserver"
 	"github.com/L-ka080/DDB-6-case/internal/platform/httpserver/middleware"
 	"github.com/L-ka080/DDB-6-case/internal/platform/security"
+	"github.com/L-ka080/DDB-6-case/internal/platform/storage"
 	"github.com/L-ka080/DDB-6-case/internal/user"
 )
 
@@ -63,11 +66,20 @@ func run() error {
 	userRepository := user.NewPostgresRepository(pool)
 	userService := user.NewService(userRepository, security.NewPasswordHasher(), jwtProvider)
 	userHandler := user.NewHandler(userService)
+	categoryRepository := category.NewPostgresRepository(pool)
+	itemRepository := item.NewPostgresRepository(pool)
+	fileStorage, err := storage.NewLocalStorage(cfg.UploadDir, cfg.MaxUploadSize)
+	if err != nil {
+		return fmt.Errorf("initialize file storage: %w", err)
+	}
+	itemService := item.NewService(itemRepository, categoryRepository, fileStorage, cfg.MaxItemPhotos)
+	itemHandler := item.NewHandler(itemService, cfg.MaxUploadSize, cfg.MaxItemPhotos)
 
-	server := httpserver.New(cfg.Port, pool, httpserver.Routes{
+	server := httpserver.New(cfg.Port, pool, cfg.UploadDir, httpserver.Routes{
 		Register:       userHandler.Register,
 		Login:          userHandler.Login,
 		Me:             userHandler.Me,
+		CreateItem:     itemHandler.Create,
 		AuthMiddleware: middleware.Auth(jwtProvider),
 	})
 	serverErrors := make(chan error, 1)

@@ -29,6 +29,7 @@ type Routes struct {
 	Register       gin.HandlerFunc
 	Login          gin.HandlerFunc
 	Me             gin.HandlerFunc
+	CreateItem     gin.HandlerFunc
 	AuthMiddleware gin.HandlerFunc
 }
 
@@ -38,7 +39,7 @@ type Server struct {
 }
 
 // New configures the Gin router and HTTP server.
-func New(port string, database Pinger, routes Routes) *Server {
+func New(port string, database Pinger, uploadDirectory string, routes Routes) *Server {
 	router := gin.New()
 	router.HandleMethodNotAllowed = true
 	router.Use(
@@ -53,6 +54,7 @@ func New(port string, database Pinger, routes Routes) *Server {
 	router.GET("/health", healthHandler)
 	router.GET("/ready", readyHandler(database))
 	router.GET("/swagger/*any", swaggerHandler())
+	router.Static("/uploads", uploadDirectory)
 
 	api := router.Group("/api/v1")
 	auth := api.Group("/auth")
@@ -62,6 +64,7 @@ func New(port string, database Pinger, routes Routes) *Server {
 	protected := api.Group("")
 	protected.Use(routes.AuthMiddleware)
 	protected.GET("/me", routes.Me)
+	protected.POST("/items", routes.CreateItem)
 
 	router.NoRoute(func(c *gin.Context) {
 		WriteError(c, http.StatusNotFound, "not_found", "resource not found")

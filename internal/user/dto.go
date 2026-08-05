@@ -6,6 +6,7 @@ import "time"
 type RegisterRequest struct {
 	Login    string `json:"login" validate:"required" minLength:"3" maxLength:"32" example:"vadim"`
 	Password string `json:"password" validate:"required" minLength:"8" example:"example-password"`
+	Name     string `json:"name" validate:"required" minLength:"2" maxLength:"100" example:"Вадим"`
 }
 
 // LoginRequest is the HTTP payload accepted by the login endpoint.
@@ -18,6 +19,7 @@ type LoginRequest struct {
 type RegisterInput struct {
 	Login    string
 	Password string
+	Name     string
 }
 
 // LoginInput contains authentication credentials for the service layer.

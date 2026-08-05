@@ -16,6 +16,9 @@ func TestLoadValidConfig(t *testing.T) {
 		"SHUTDOWN_TIMEOUT": "10s",
 		"JWT_SECRET":       "test-secret",
 		"JWT_TTL":          "24h",
+		"UPLOAD_DIR":       "/tmp/exchange-uploads",
+		"MAX_UPLOAD_SIZE":  "10485760",
+		"MAX_ITEM_PHOTOS":  "5",
 	}
 
 	got, err := load(mapLookup(values))
@@ -38,6 +41,9 @@ func TestLoadValidConfig(t *testing.T) {
 	if got.JWTTTL != 24*time.Hour {
 		t.Fatalf("JWTTTL = %s, want %s", got.JWTTTL, 24*time.Hour)
 	}
+	if got.UploadDir != "/tmp/exchange-uploads" || got.MaxUploadSize != 10485760 || got.MaxItemPhotos != 5 {
+		t.Fatalf("upload config = dir %q, size %d, photos %d", got.UploadDir, got.MaxUploadSize, got.MaxItemPhotos)
+	}
 }
 
 func TestLoadRejectsMissingVariable(t *testing.T) {
@@ -49,6 +55,9 @@ func TestLoadRejectsMissingVariable(t *testing.T) {
 		"SHUTDOWN_TIMEOUT": "10s",
 		"JWT_SECRET":       "test-secret",
 		"JWT_TTL":          "24h",
+		"UPLOAD_DIR":       "/tmp/exchange-uploads",
+		"MAX_UPLOAD_SIZE":  "10485760",
+		"MAX_ITEM_PHOTOS":  "5",
 	}
 
 	_, err := load(mapLookup(values))
@@ -72,6 +81,10 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		{name: "invalid JWT TTL", key: "JWT_TTL", value: "tomorrow", wantError: "JWT_TTL"},
 		{name: "zero JWT TTL", key: "JWT_TTL", value: "0s", wantError: "JWT_TTL"},
 		{name: "subsecond JWT TTL", key: "JWT_TTL", value: "500ms", wantError: "JWT_TTL"},
+		{name: "invalid max upload size", key: "MAX_UPLOAD_SIZE", value: "large", wantError: "MAX_UPLOAD_SIZE"},
+		{name: "zero max upload size", key: "MAX_UPLOAD_SIZE", value: "0", wantError: "MAX_UPLOAD_SIZE"},
+		{name: "invalid max item photos", key: "MAX_ITEM_PHOTOS", value: "many", wantError: "MAX_ITEM_PHOTOS"},
+		{name: "zero max item photos", key: "MAX_ITEM_PHOTOS", value: "0", wantError: "MAX_ITEM_PHOTOS"},
 	}
 
 	for _, tt := range tests {
@@ -85,6 +98,9 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 				"SHUTDOWN_TIMEOUT": "10s",
 				"JWT_SECRET":       "test-secret",
 				"JWT_TTL":          "24h",
+				"UPLOAD_DIR":       "/tmp/exchange-uploads",
+				"MAX_UPLOAD_SIZE":  "10485760",
+				"MAX_ITEM_PHOTOS":  "5",
 			}
 			values[tt.key] = tt.value
 
@@ -105,6 +121,9 @@ func TestLoadRejectsMissingJWTConfig(t *testing.T) {
 		"DATABASE_URL":     "postgres://user:password@localhost:5432/exchange",
 		"SHUTDOWN_TIMEOUT": "10s",
 		"JWT_TTL":          "24h",
+		"UPLOAD_DIR":       "/tmp/exchange-uploads",
+		"MAX_UPLOAD_SIZE":  "10485760",
+		"MAX_ITEM_PHOTOS":  "5",
 	}
 
 	_, err := load(mapLookup(base))

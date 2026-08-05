@@ -1,28 +1,52 @@
-// Package item contains item domain types and contracts.
+// Package item contains item creation domain types and use cases.
 package item
 
 import "time"
 
-// Status describes the current availability of an item.
+// Condition describes the physical state of an item.
+type Condition string
+
+// Supported item conditions.
+const (
+	ConditionNew     Condition = "new"
+	ConditionLikeNew Condition = "like_new"
+	ConditionGood    Condition = "good"
+	ConditionFair    Condition = "fair"
+	ConditionPoor    Condition = "poor"
+)
+
+// Status describes the current exchange state of an item.
 type Status string
 
 // Supported item statuses.
 const (
-	StatusAvailable Status = "available"
-	StatusReserved  Status = "reserved"
+	StatusSearching Status = "searching"
+	StatusInChain   Status = "in_chain"
 	StatusExchanged Status = "exchanged"
 	StatusArchived  Status = "archived"
 )
 
-// Item is an object offered by its owner for exchange.
+// Item is a persisted object offered for exchange.
 type Item struct {
-	ID              int64
-	OwnerID         int64
-	Title           string
-	Description     string
-	Category        string
-	DesiredCategory string
-	Status          Status
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID               int64
+	UserID           int64
+	Title            string
+	Description      string
+	Condition        Condition
+	CategoryID       int64
+	PriceMin         int64
+	PriceMax         int64
+	WantedCategoryID int64
+	Status           Status
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+// Photo is persisted metadata for an item image.
+type Photo struct {
+	ID        int64
+	ItemID    int64
+	URL       string
+	Position  int
+	CreatedAt time.Time
 }

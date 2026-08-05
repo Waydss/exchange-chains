@@ -1,3 +1,4 @@
+// Package config loads and validates application configuration.
 package config
 
 import (
@@ -8,6 +9,7 @@ import (
 	"time"
 )
 
+// Config contains validated runtime settings.
 type Config struct {
 	Port            string
 	Environment     string
@@ -15,6 +17,9 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	JWTSecret       string
 	JWTTTL          time.Duration
+	UploadDir       string
+	MaxUploadSize   int64
+	MaxItemPhotos   int
 }
 
 // Load reads and validates the application configuration.
@@ -68,6 +73,29 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, fmt.Errorf("config: JWT_TTL must be a duration of at least 1s")
 	}
 
+	uploadDir, err := required(lookup, "UPLOAD_DIR")
+	if err != nil {
+		return Config{}, err
+	}
+
+	maxUploadSizeValue, err := required(lookup, "MAX_UPLOAD_SIZE")
+	if err != nil {
+		return Config{}, err
+	}
+	maxUploadSize, err := strconv.ParseInt(maxUploadSizeValue, 10, 64)
+	if err != nil || maxUploadSize <= 0 {
+		return Config{}, fmt.Errorf("config: MAX_UPLOAD_SIZE must be a positive integer")
+	}
+
+	maxItemPhotosValue, err := required(lookup, "MAX_ITEM_PHOTOS")
+	if err != nil {
+		return Config{}, err
+	}
+	maxItemPhotos, err := strconv.Atoi(maxItemPhotosValue)
+	if err != nil || maxItemPhotos <= 0 {
+		return Config{}, fmt.Errorf("config: MAX_ITEM_PHOTOS must be a positive integer")
+	}
+
 	return Config{
 		Port:            port,
 		Environment:     environment,
@@ -75,6 +103,9 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 		ShutdownTimeout: shutdownTimeout,
 		JWTSecret:       jwtSecret,
 		JWTTTL:          jwtTTL,
+		UploadDir:       uploadDir,
+		MaxUploadSize:   maxUploadSize,
+		MaxItemPhotos:   maxItemPhotos,
 	}, nil
 }
 

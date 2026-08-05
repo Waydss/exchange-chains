@@ -29,11 +29,16 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_TTL: ${JWT_TTL:?JWT_TTL is required}
       GIN_MODE: ${GIN_MODE:-release}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-10485760}
+      MAX_ITEM_PHOTOS: ${MAX_ITEM_PHOTOS:-5}
     ports:
       - "${APP_PORT:-8080}:${APP_PORT:-8080}"
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - item_uploads:${UPLOAD_DIR:-/app/uploads}
     restart: unless-stopped
 
   migrate:
@@ -51,3 +56,4 @@ services:
 
 volumes:
   postgres_data:
+  item_uploads:
