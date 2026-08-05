@@ -1,10 +1,11 @@
-import { Typography } from 'antd'
+import { RouterProvider } from 'react-router-dom'
 import { AntdProvider } from '@app/providers/AntdProvider'
+import { router } from '@app/router/router'
 
 export const App = () => {
   return (
     <AntdProvider>
-      <Typography.Title level={3}>Frontend initialized</Typography.Title>
+      <RouterProvider router={router} />
     </AntdProvider>
   )
 }
