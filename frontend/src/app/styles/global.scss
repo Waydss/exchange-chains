@@ -1,0 +1,11 @@
+@use './fonts';
+@use './tokens';
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-base);
+}
