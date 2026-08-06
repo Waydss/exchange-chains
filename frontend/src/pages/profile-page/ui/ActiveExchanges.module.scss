@@ -1,0 +1,22 @@
+.wrapper {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+  border-radius: var(--radius-md);
+}
