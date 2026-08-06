@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/L-ka080/DDB-6-case/docs"
 	"github.com/L-ka080/DDB-6-case/internal/category"
+	cb "github.com/L-ka080/DDB-6-case/internal/chain_builder"
 	"github.com/L-ka080/DDB-6-case/internal/config"
 	"github.com/L-ka080/DDB-6-case/internal/item"
 	"github.com/L-ka080/DDB-6-case/internal/platform/database"
@@ -99,6 +100,10 @@ func run() error {
 		log.Print("shutdown signal received")
 	}
 
+	// This channel is done whenever current Chain is evaluated.
+	// Currently other quened chain requests are dropping after current one if app is closing
+	workersDone := cb.StartChainRequestWorkers(appContext)
+
 	shutdownContext, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 
@@ -109,6 +114,8 @@ func run() error {
 	if err := <-serverErrors; err != nil {
 		return fmt.Errorf("stop HTTP server: %w", err)
 	}
+
+	<-workersDone
 
 	log.Print("application stopped gracefully")
 	return nil
