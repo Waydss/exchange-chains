@@ -1,64 +1,72 @@
 package cb
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/L-ka080/DDB-6-case/internal/chain_builder/entities"
+	"github.com/L-ka080/DDB-6-case/internal/platform/httpserver"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
+	"github.com/jackc/pgx/v5"
 )
 
-// CreateChainsForItem godoc
-//
-// @Summary Прямой способ создания цепочки, не завязанный на состоянии предметов в системе
-// @Description Создание цепочки на основе переданного UserId и WishedItemId из БД
-// @Tags chains
-// @Produce Status Code
-// @Security BearerAuth
-// @Success 200 {plain/text}
-// @Failure 400 {object} httpserver.ErrorResponse
-// @Failure 404 {object} httpserver.ErrorResponse
-// @Router /api/v1/chain [post]
-func CreateChainsForItem(ctx *gin.Context) {
-	// FIXME I think this function will be changed completely to fit current server's structure...
+// Handler exposes chain building over HTTP.
+type Handler struct {
+	service *Service
+}
 
+// NewHandler creates a chain-builder HTTP handler.
+func NewHandler(service *Service) *Handler {
+	return &Handler{service: service}
+}
+
+
+func (h *Handler) CreateChainsForItem(ctx *gin.Context) {
 	decoder := json.NewDecoder(ctx.Request.Body)
 	decoder.DisallowUnknownFields()
 
 	request := CreateChainRequest{}
-	decoder.Decode(&request)
-
-	if request.UserId == 0 {
-		ctx.Status(http.StatusBadRequest)
-		ctx.Error(fmt.Errorf("Request body is not valid"))
+	if err := decoder.Decode(&request); err != nil {
+		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "request body must be valid JSON")
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "request body must contain one JSON object")
 		return
 	}
 
-	// TODO Add here WishedItem validation too
+	if request.UserId == 0 || request.WishedItemId == 0 {
+		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "user_id and wished_item_id must be positive")
+		return
+	}
 
-	context := context.Background()
-
-	// FIXME We need to start using gorm, because i can't live without it...
-	foundAccount, err := gorm.G[entities.Account](db.DB).
-		Where("id = ?", request.UserId).
-		Preload("Wishes", nil).
-		Preload("Gives", nil).
-		First(context)
-
+	foundAccount, err := h.service.repository.GetAccount(ctx.Request.Context(), request.UserId)
 	if err != nil {
-
-		// FIXME This must be changed to match the ErrorResponse schema
-		ctx.Status(http.StatusBadRequest)
-		ctx.Error(fmt.Errorf("User not found"))
+		if errors.Is(err, pgx.ErrNoRows) {
+			httpserver.WriteError(ctx, http.StatusNotFound, "account_not_found", "account not found")
+			return
+		}
+		httpserver.WriteError(ctx, http.StatusInternalServerError, "database_error", "could not load account")
 		return
 	}
 
-	ChainRequestQuene <- ChainRequest{UserAccount: &foundAccount, WishedItemId: request.WishedItemId}
+	wishExists := false
+	for _, wish := range foundAccount.Wishes {
+		if wish.ID == request.WishedItemId {
+			wishExists = true
+			break
+		}
+	}
+	if !wishExists {
+		httpserver.WriteError(ctx, http.StatusNotFound, "wish_not_found", "wished item not found for account")
+		return
+	}
 
-	ctx.Status(http.StatusOK)
+	h.service.EnqueueChainRequest(ChainRequest{UserAccount: &foundAccount, WishedItemId: request.WishedItemId})
+
+	ctx.Status(http.StatusAccepted)
 }
 
 type CreateChainRequest struct {

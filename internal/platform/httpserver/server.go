@@ -30,6 +30,7 @@ type Routes struct {
 	Login          gin.HandlerFunc
 	Me             gin.HandlerFunc
 	CreateItem     gin.HandlerFunc
+	CreateChain    gin.HandlerFunc
 	AuthMiddleware gin.HandlerFunc
 }
 
@@ -65,6 +66,7 @@ func New(port string, database Pinger, uploadDirectory string, routes Routes) *S
 	protected.Use(routes.AuthMiddleware)
 	protected.GET("/me", routes.Me)
 	protected.POST("/items", routes.CreateItem)
+	protected.POST("/chain", routes.CreateChain)
 
 	router.NoRoute(func(c *gin.Context) {
 		WriteError(c, http.StatusNotFound, "not_found", "resource not found")

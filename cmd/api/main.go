@@ -75,12 +75,17 @@ func run() error {
 	}
 	itemService := item.NewService(itemRepository, categoryRepository, fileStorage, cfg.MaxItemPhotos)
 	itemHandler := item.NewHandler(itemService, cfg.MaxUploadSize, cfg.MaxItemPhotos)
+	chainRepository := cb.NewPostgresRepository(pool)
+	chainService := cb.NewService(chainRepository)
+	chainHandler := cb.NewHandler(chainService)
+	workersDone := chainService.StartChainRequestWorkers(appContext)
 
 	server := httpserver.New(cfg.Port, pool, cfg.UploadDir, httpserver.Routes{
 		Register:       userHandler.Register,
 		Login:          userHandler.Login,
 		Me:             userHandler.Me,
 		CreateItem:     itemHandler.Create,
+		CreateChain:    chainHandler.CreateChainsForItem,
 		AuthMiddleware: middleware.Auth(jwtProvider),
 	})
 	serverErrors := make(chan error, 1)
@@ -99,10 +104,6 @@ func run() error {
 	case <-appContext.Done():
 		log.Print("shutdown signal received")
 	}
-
-	// This channel is done whenever current Chain is evaluated.
-	// Currently other quened chain requests are dropping after current one if app is closing
-	workersDone := cb.StartChainRequestWorkers(appContext)
 
 	shutdownContext, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()

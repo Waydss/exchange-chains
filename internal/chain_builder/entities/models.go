@@ -8,13 +8,13 @@ import (
 )
 
 type Chain struct {
-	Id        uint       `json:"id" gorm:"primaryKey"`
-	User      Account    `gorm:"foreignKey:UserId;references:Id;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	UserId    uint       `json:"user_id" gorm:"index"`
+	Id        uint       `json:"id"`
+	User      Account    `json:"-"`
+	UserId    uint       `json:"user_id"`
 	RootId    uint       `json:"root"`
-	RootWish  WishedItem `json:"root_wish" gorm:"serializer:json"`
-	Barters   []Barter   `json:"barters" gorm:"serializer:json"`
-	Signature string     `json:"signature" gorm:"uniqueIndex"`
+	RootWish  WishedItem `json:"root_wish"`
+	Barters   []Barter   `json:"barters"`
+	Signature string     `json:"signature"`
 	Complete  bool       `json:"complete"`
 	Score     float64    `json:"score"`
 	CreatedAt time.Time
@@ -37,8 +37,8 @@ type Account struct {
 	Name         string
 	PublicRating float64
 	ShadowRating int
-	Wishes       []WishedItem `gorm:"foreignKey:UserID;references:ID"`
-	Gives        []GivedItem  `gorm:"foreignKey:UserID;references:ID"`
+	Wishes       []WishedItem
+	Gives        []GivedItem
 }
 
 func (a Account) CurrentGive() (GivedItem, bool) {

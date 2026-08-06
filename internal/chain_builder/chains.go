@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/L-ka080/DDB-6-case/internal/chain_builder/entities"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const (
@@ -52,17 +50,30 @@ type stateExpansion struct {
 // var ChainRequestQuene []ChainRequest = []ChainRequest{}
 const chain_request_queue_size = 100
 
-var ChainRequestQuene = make(chan ChainRequest, chain_request_queue_size)
+// Service owns the chain-building queue and its database dependency.
+type Service struct {
+	repository Repository
+	queue      chan ChainRequest
+}
 
-func EnqueueChainRequest(req ChainRequest) {
-	ChainRequestQuene <- req
+// NewService creates a chain-building service.
+func NewService(repository Repository) *Service {
+	return &Service{
+		repository: repository,
+		queue:      make(chan ChainRequest, chain_request_queue_size),
+	}
+}
+
+// EnqueueChainRequest adds a request to the asynchronous chain-building queue.
+func (s *Service) EnqueueChainRequest(req ChainRequest) {
+	s.queue <- req
 }
 
 // Entry point for the Chain evaluation process. This function looks over the ChainRequestQuene
 // for the newly arrived ChainRequest structs.
 //
 // For the actuall Chain evaluation functionality - refer to the buildClosedChains function
-func StartChainRequestWorkers(ctx context.Context) <-chan struct{} {
+func (s *Service) StartChainRequestWorkers(ctx context.Context) <-chan struct{} {
 	done := make(chan struct{})
 
 	var wg sync.WaitGroup
@@ -73,8 +84,8 @@ func StartChainRequestWorkers(ctx context.Context) <-chan struct{} {
 			defer wg.Done()
 			for {
 				select {
-				case req := <-ChainRequestQuene:
-					handleChainRequest(req)
+				case req := <-s.queue:
+					s.handleChainRequest(ctx, req)
 				case <-ctx.Done():
 					return
 				}
@@ -91,7 +102,7 @@ func StartChainRequestWorkers(ctx context.Context) <-chan struct{} {
 }
 
 // Function for ChainRequest validation
-func handleChainRequest(req ChainRequest) {
+func (s *Service) handleChainRequest(ctx context.Context, req ChainRequest) {
 	root := req.UserAccount
 	if root == nil {
 		log.Println("Chain request skipped: account pointer is nil")
@@ -111,7 +122,7 @@ func handleChainRequest(req ChainRequest) {
 	}
 
 	start := time.Now()
-	chains := buildClosedChains(root, wishIndex)
+	chains := s.buildClosedChains(ctx, root, wishIndex)
 	log.Printf("Chain request done: account=%d wish=%d chains=%d in %v", root.Id, req.WishedItemId, len(chains), time.Since(start))
 }
 
@@ -123,7 +134,7 @@ func handleChainRequest(req ChainRequest) {
 // Chains are written to the Table on each buildChainFromState() call, to ensure data is appearing while the process is still running.
 //
 // For lookup functionality - refer to the rankNextCandidates() function
-func buildClosedChains(root *entities.Account, rootWishIndex int) []*entities.Chain {
+func (s *Service) buildClosedChains(ctx context.Context, root *entities.Account, rootWishIndex int) []*entities.Chain {
 	if root == nil || rootWishIndex < 0 || rootWishIndex >= len(root.Wishes) {
 		return nil
 	}
@@ -138,7 +149,7 @@ func buildClosedChains(root *entities.Account, rootWishIndex int) []*entities.Ch
 	results := make([]entities.Chain, 0)
 	queue := make([]*searchState, 0)
 
-	for _, cand := range rankNextCandidates(root.Id, root.Id, startGive, nil) {
+	for _, cand := range s.rankNextCandidates(ctx, root.Id, root.Id, startGive, nil) {
 		edge := entities.Barter{
 			From:       root.Id,
 			To:         cand.AccountID,
@@ -172,7 +183,7 @@ func buildClosedChains(root *entities.Account, rootWishIndex int) []*entities.Ch
 		layerSize := len(queue)
 		layerDepth := queue[0].Depth
 
-		expansions := expandLayerParallel(root, rootWish, queue)
+		expansions := s.expandLayerParallel(ctx, root, rootWish, queue)
 		queue = queue[:0]
 
 		layerChains := 0
@@ -213,7 +224,7 @@ func buildClosedChains(root *entities.Account, rootWishIndex int) []*entities.Ch
 	return uniq
 }
 
-func expandLayerParallel(root *entities.Account, rootWish entities.WishedItem, states []*searchState) []stateExpansion {
+func (s *Service) expandLayerParallel(ctx context.Context, root *entities.Account, rootWish entities.WishedItem, states []*searchState) []stateExpansion {
 	if len(states) == 0 {
 		return nil
 	}
@@ -237,7 +248,7 @@ func expandLayerParallel(root *entities.Account, rootWish entities.WishedItem, s
 		go func() {
 			defer wg.Done()
 			for state := range jobs {
-				results <- expandState(root, rootWish, state)
+				results <- s.expandState(ctx, root, rootWish, state)
 			}
 		}()
 	}
@@ -262,7 +273,7 @@ func expandLayerParallel(root *entities.Account, rootWish entities.WishedItem, s
 	return out
 }
 
-func expandState(root *entities.Account, rootWish entities.WishedItem, state *searchState) stateExpansion {
+func (s *Service) expandState(ctx context.Context, root *entities.Account, rootWish entities.WishedItem, state *searchState) stateExpansion {
 	if state == nil || int(state.Depth) >= max_barters_per_chain {
 		return stateExpansion{}
 	}
@@ -289,10 +300,10 @@ func expandState(root *entities.Account, rootWish entities.WishedItem, state *se
 				CreatedAt:  maxTime(state.CurrentGive.UpdatedAt, rootWish.UpdatedAt),
 			},
 		}
-		completed = append(completed, buildChainFromState(root, rootWish, closing))
+		completed = append(completed, s.buildChainFromState(ctx, root, rootWish, closing))
 	}
 
-	for _, cand := range rankNextCandidates(state.CurrentID, root.Id, state.CurrentGive, state) {
+	for _, cand := range s.rankNextCandidates(ctx, state.CurrentID, root.Id, state.CurrentGive, state) {
 		if cand.AccountID == root.Id {
 			continue
 		}
@@ -330,15 +341,15 @@ func expandState(root *entities.Account, rootWish entities.WishedItem, state *se
 // Getting all possible candidates for constructing a layer brokes into 3 steps: 1. filtering request to the database; 2. further filtering to ensure rootId is present in the slice; 3. sorting on final_score (refer to candidateScore()).
 //
 // Then current graph state is extending with this data and Chain building continues.
-func rankNextCandidates(sourceID, rootID uint, give entities.GivedItem, state *searchState) []candidate {
+func (s *Service) rankNextCandidates(ctx context.Context, sourceID, rootID uint, give entities.GivedItem, state *searchState) []candidate {
 	if !use_cache {
-		return filterCandidates(buildCandidatesForGive(give), sourceID, rootID, state)
+		return filterCandidates(s.buildCandidatesForGive(ctx, give), sourceID, rootID, state)
 	}
 
 	candidates, ok := giveCandidatesCache.Load(give.ID)
 	if !ok {
 		cacheMisses.Add(1)
-		actual, _ := giveCandidatesCache.LoadOrStore(give.ID, buildCandidatesForGive(give))
+		actual, _ := giveCandidatesCache.LoadOrStore(give.ID, s.buildCandidatesForGive(ctx, give))
 		candidates = actual
 	} else {
 		cacheHits.Add(1)
@@ -354,20 +365,12 @@ var (
 	chainWriteMu        sync.Mutex
 )
 
-func buildCandidatesForGive(give entities.GivedItem) []candidate {
-	possibleCandidates := make([]entities.Account, 0)
-
-	// FIXME We need to start using gorm, because i can't live without it...
-	database.DB.Model(&entities.Account{}).
-		Select("DISTINCT accounts.id, accounts.name, accounts.public_rating, accounts.shadow_rating").
-		Joins("JOIN wished_items ON wished_items.user_id = accounts.id").
-		Where("wished_items.category = ? AND wished_items.min_price <= ? AND wished_items.max_price >= ?", give.Category, give.Price, give.Price).
-		Preload("Gives", func(tx *gorm.DB) *gorm.DB {
-			return tx.Order("updated_at")
-		}).
-		Preload("Wishes", "wished_items.category = ? AND wished_items.min_price <= ? AND wished_items.max_price >= ?", give.Category, give.Price, give.Price).
-		Limit(candidate_limit).
-		Find(&possibleCandidates)
+func (s *Service) buildCandidatesForGive(ctx context.Context, give entities.GivedItem) []candidate {
+	possibleCandidates, err := s.repository.FindCandidateAccounts(ctx, give, candidate_limit)
+	if err != nil {
+		log.Printf("Error while loading chain candidates: %v", err)
+		return nil
+	}
 
 	candidates := make([]candidate, 0, len(possibleCandidates))
 
@@ -431,7 +434,7 @@ func filterCandidates(candidates []candidate, sourceID, rootID uint, state *sear
 	return filtered
 }
 
-func buildChainFromState(root *entities.Account, rootWish entities.WishedItem, state *searchState) entities.Chain {
+func (s *Service) buildChainFromState(ctx context.Context, root *entities.Account, rootWish entities.WishedItem, state *searchState) entities.Chain {
 	path := state.Path()
 	for i := range path {
 		path[i].Id = uint(i + 1)
@@ -460,8 +463,7 @@ func buildChainFromState(root *entities.Account, rootWish entities.WishedItem, s
 
 	chainWriteMu.Lock()
 
-	// FIXME We need to start using gorm, because i can't live without it...
-	err := database.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&dbChain).Error
+	err := s.repository.CreateChain(ctx, dbChain)
 	chainWriteMu.Unlock()
 	if err != nil {
 		log.Printf("Error while writing the chain: %v", err)
