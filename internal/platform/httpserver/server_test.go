@@ -180,6 +180,7 @@ func testRoutes() Routes {
 		Login:          noop,
 		Me:             noop,
 		CreateItem:     noop,
+		CreateChain:    noop,
 		AuthMiddleware: pass,
 	}
 }

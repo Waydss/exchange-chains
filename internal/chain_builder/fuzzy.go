@@ -4,7 +4,7 @@ import "strings"
 
 // Fuzzy search evaluation of the Item's names
 //
-// Uses Levanstain method of calculating the score (0-1)
+// Uses Levenshtein Distance method of calculating the score (0-1)
 func fuzzySimilarity(a, b string) float64 {
 	a = normalizeText(a)
 	b = normalizeText(b)
