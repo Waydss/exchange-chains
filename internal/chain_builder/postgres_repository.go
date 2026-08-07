@@ -119,7 +119,6 @@ func (r *PostgresRepository) CreateChain(ctx context.Context, chain entities.Cha
 		return fmt.Errorf("marshal barters: %w", err)
 	}
 
-	// FIXME We currently don't have the chains table, so that won't work
 	const query = `
 		INSERT INTO chains (user_id, root_id, root_wish, barters, signature, complete, score)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
