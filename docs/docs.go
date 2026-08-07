@@ -122,6 +122,70 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/chains/{chainId}/decline": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Фиксирует в Redis временный отказ текущего пользователя от товара, который он должен был получить. Состояние цепочки в PostgreSQL пока не изменяется.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Отказ от цепочки обмена",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID цепочки",
+                        "name": "chainId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Получаемый товар, вызвавший отказ",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rejection.DeclineChainRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rejection.DeclineChainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/items": {
             "post": {
                 "security": [
@@ -318,7 +382,7 @@ const docTemplate = `{
         },
         "/ready": {
             "get": {
-                "description": "Проверяет доступность PostgreSQL и сообщает, готово ли приложение принимать запросы.",
+                "description": "Проверяет доступность PostgreSQL и Redis и сообщает, готово ли приложение принимать запросы.",
                 "produces": [
                     "application/json"
                 ],
@@ -497,6 +561,32 @@ const docTemplate = `{
                 "StatusExchanged",
                 "StatusArchived"
             ]
+        },
+        "rejection.DeclineChainRequest": {
+            "type": "object",
+            "properties": {
+                "received_item_id": {
+                    "type": "integer",
+                    "example": 205
+                }
+            }
+        },
+        "rejection.DeclineChainResponse": {
+            "type": "object",
+            "properties": {
+                "chain_id": {
+                    "type": "integer",
+                    "example": 77
+                },
+                "received_item_id": {
+                    "type": "integer",
+                    "example": 205
+                },
+                "status": {
+                    "type": "string",
+                    "example": "rejection_recorded"
+                }
+            }
         },
         "user.AuthResult": {
             "type": "object",

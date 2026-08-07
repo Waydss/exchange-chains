@@ -22,7 +22,6 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-
 func (h *Handler) CreateChainsForItem(ctx *gin.Context) {
 	decoder := json.NewDecoder(ctx.Request.Body)
 	decoder.DisallowUnknownFields()

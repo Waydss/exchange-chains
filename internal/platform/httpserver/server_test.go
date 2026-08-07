@@ -20,7 +20,7 @@ func (fn pingFunc) Ping(ctx context.Context) error {
 
 func TestHealth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	server := New("8080", pingFunc(func(context.Context) error { return nil }), t.TempDir(), testRoutes())
+	server := New("8080", availableDependencies(), t.TempDir(), testRoutes())
 
 	response := performRequest(server, http.MethodGet, "/health", "")
 
@@ -36,10 +36,11 @@ func TestReady(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name       string
-		pingError  error
-		wantStatus int
-		wantBody   string
+		name          string
+		databaseError error
+		redisError    error
+		wantStatus    int
+		wantBody      string
 	}{
 		{
 			name:       "database available",
@@ -47,16 +48,25 @@ func TestReady(t *testing.T) {
 			wantBody:   `{"status":"ready"}`,
 		},
 		{
-			name:       "database unavailable",
-			pingError:  errors.New("connection refused"),
+			name:          "database unavailable",
+			databaseError: errors.New("connection refused"),
+			wantStatus:    http.StatusServiceUnavailable,
+			wantBody:      `{"error":{"code":"database_unavailable","message":"database is unavailable"}}`,
+		},
+		{
+			name:       "Redis unavailable",
+			redisError: errors.New("connection refused"),
 			wantStatus: http.StatusServiceUnavailable,
-			wantBody:   `{"error":{"code":"database_unavailable","message":"database is unavailable"}}`,
+			wantBody:   `{"error":{"code":"redis_unavailable","message":"redis is unavailable"}}`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := New("8080", pingFunc(func(context.Context) error { return tt.pingError }), t.TempDir(), testRoutes())
+			server := New("8080", ReadinessDependencies{
+				Database: pingFunc(func(context.Context) error { return tt.databaseError }),
+				Redis:    pingFunc(func(context.Context) error { return tt.redisError }),
+			}, t.TempDir(), testRoutes())
 			response := performRequest(server, http.MethodGet, "/ready", "")
 
 			if response.Code != tt.wantStatus {
@@ -71,7 +81,7 @@ func TestReady(t *testing.T) {
 
 func TestCORS(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	server := New("8080", pingFunc(func(context.Context) error { return nil }), t.TempDir(), testRoutes())
+	server := New("8080", availableDependencies(), t.TempDir(), testRoutes())
 
 	response := performRequest(server, http.MethodOptions, "/health", "http://localhost:5173")
 
@@ -85,7 +95,7 @@ func TestCORS(t *testing.T) {
 
 func TestSwagger(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	server := New("8080", pingFunc(func(context.Context) error { return nil }), t.TempDir(), testRoutes())
+	server := New("8080", availableDependencies(), t.TempDir(), testRoutes())
 
 	tests := []struct {
 		path        string
@@ -128,7 +138,7 @@ func TestSwagger(t *testing.T) {
 
 func TestHTTPErrorFormat(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	server := New("8080", pingFunc(func(context.Context) error { return nil }), t.TempDir(), testRoutes())
+	server := New("8080", availableDependencies(), t.TempDir(), testRoutes())
 
 	tests := []struct {
 		name       string
@@ -181,8 +191,14 @@ func testRoutes() Routes {
 		Me:             noop,
 		CreateItem:     noop,
 		CreateChain:    noop,
+		DeclineChain:   noop,
 		AuthMiddleware: pass,
 	}
+}
+
+func availableDependencies() ReadinessDependencies {
+	available := pingFunc(func(context.Context) error { return nil })
+	return ReadinessDependencies{Database: available, Redis: available}
 }
 
 func performRequest(server *Server, method, path, origin string) *httptest.ResponseRecorder {
