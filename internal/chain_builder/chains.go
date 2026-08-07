@@ -2,6 +2,7 @@ package cb
 
 import (
 	"context"
+	"errors"
 	"log"
 	"runtime"
 	"sort"
@@ -9,8 +10,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/L-ka080/DDB-6-case/internal/chain_builder/entities"
+	"github.com/L-ka080/DDB-6-case/internal/exchange"
 )
+
+// errChainScoreTooLow signals a chain that does not pass the final score gate.
+// var errChainScoreTooLow =
 
 const (
 	// The maximum length of the chain.
@@ -44,7 +48,7 @@ const (
 
 type stateExpansion struct {
 	nextStates []*searchState
-	chains     []entities.Chain
+	chains     []exchange.Chain
 }
 
 // var ChainRequestQuene []ChainRequest = []ChainRequest{}
@@ -103,7 +107,7 @@ func (s *Service) StartChainRequestWorkers(ctx context.Context) <-chan struct{} 
 
 // Function for ChainRequest validation
 func (s *Service) handleChainRequest(ctx context.Context, req ChainRequest) {
-	root := req.UserAccount
+	root := req.User
 	if root == nil {
 		log.Println("Chain request skipped: account pointer is nil")
 		return
@@ -117,13 +121,13 @@ func (s *Service) handleChainRequest(ctx context.Context, req ChainRequest) {
 		}
 	}
 	if wishIndex < 0 {
-		log.Printf("Chain request skipped: wished item %d not found for account %d; total wishes: %v", req.WishedItemId, root.Id, len(root.Wishes))
+		log.Printf("Chain request skipped: wished item id %d not found for account id %d;", req.WishedItemId, root.ID)
 		return
 	}
 
 	start := time.Now()
 	chains := s.buildClosedChains(ctx, root, wishIndex)
-	log.Printf("Chain request done: account=%d wish=%d chains=%d in %v", root.Id, req.WishedItemId, len(chains), time.Since(start))
+	log.Printf("Chain request done: account=%d wish=%d chains=%d in %v", root.ID, req.WishedItemId, len(chains), time.Since(start))
 }
 
 // Builds a new Chains for provided Account and Wished Item index.
@@ -134,7 +138,7 @@ func (s *Service) handleChainRequest(ctx context.Context, req ChainRequest) {
 // Chains are written to the Table on each buildChainFromState() call, to ensure data is appearing while the process is still running.
 //
 // For lookup functionality - refer to the rankNextCandidates() function
-func (s *Service) buildClosedChains(ctx context.Context, root *entities.Account, rootWishIndex int) []*entities.Chain {
+func (s *Service) buildClosedChains(ctx context.Context, root *userCandidate, rootWishIndex int) []*exchange.Chain {
 	if root == nil || rootWishIndex < 0 || rootWishIndex >= len(root.Wishes) {
 		return nil
 	}
@@ -142,22 +146,23 @@ func (s *Service) buildClosedChains(ctx context.Context, root *entities.Account,
 	rootWish := root.Wishes[rootWishIndex]
 	startGive, ok := root.CurrentGive()
 	if !ok {
+		log.Printf("Build abandoned - Chain's skipped. User (ID: %v) doesn't have any suitable gives for start\n", root.ID)
 		return nil
 	}
 	rootDepthLimit := uint8(allowedDepth(root.ShadowRating))
 
-	results := make([]entities.Chain, 0)
+	results := make([]exchange.Chain, 0)
 	queue := make([]*searchState, 0)
 
-	for _, cand := range s.rankNextCandidates(ctx, root.Id, root.Id, startGive, nil) {
-		edge := entities.Barter{
-			From:       root.Id,
+	for _, cand := range s.rankNextCandidates(ctx, root.ID, root.ID, startGive, nil) {
+		edge := barterVertex{
+			From:       root.ID,
 			To:         cand.AccountID,
 			Give:       startGive,
 			Wish:       cand.Wish,
 			FuzzyScore: cand.FuzzyScore,
 			MatchScore: cand.MatchScore,
-			CreatedAt:  maxTime(startGive.UpdatedAt, cand.Wish.UpdatedAt),
+			CreatedAt:  maxTime(cand.CurrentGive.UpdatedAt, rootWish.UpdatedAt),
 		}
 
 		nextState := &searchState{
@@ -204,7 +209,7 @@ func (s *Service) buildClosedChains(ctx context.Context, root *entities.Account,
 		return nil
 	}
 
-	uniq := make([]*entities.Chain, 0, len(results))
+	uniq := make([]*exchange.Chain, 0, len(results))
 	seen := map[string]bool{}
 	for _, chain := range results {
 		sig := chainSignature(chain)
@@ -224,7 +229,7 @@ func (s *Service) buildClosedChains(ctx context.Context, root *entities.Account,
 	return uniq
 }
 
-func (s *Service) expandLayerParallel(ctx context.Context, root *entities.Account, rootWish entities.WishedItem, states []*searchState) []stateExpansion {
+func (s *Service) expandLayerParallel(ctx context.Context, root *userCandidate, rootWish exchange.WishedItem, states []*searchState) []stateExpansion {
 	if len(states) == 0 {
 		return nil
 	}
@@ -273,38 +278,45 @@ func (s *Service) expandLayerParallel(ctx context.Context, root *entities.Accoun
 	return out
 }
 
-func (s *Service) expandState(ctx context.Context, root *entities.Account, rootWish entities.WishedItem, state *searchState) stateExpansion {
+func (s *Service) expandState(ctx context.Context, root *userCandidate, rootWish exchange.WishedItem, state *searchState) stateExpansion {
 	if state == nil || int(state.Depth) >= max_barters_per_chain {
 		return stateExpansion{}
 	}
 
 	children := make([]*searchState, 0)
-	completed := make([]entities.Chain, 0)
+	completed := make([]exchange.Chain, 0)
 
-	if state.Depth >= 1 && wishMatchesGive(rootWish, state.CurrentGive) {
-		fuzzy := fuzzySimilarity(state.CurrentGive.Name, rootWish.Name)
-		closing := &searchState{
-			Parent:      state,
-			CurrentID:   root.Id,
-			CurrentGive: state.CurrentGive,
-			Depth:       state.Depth + 1,
-			DepthLimit:  state.DepthLimit,
-			Score:       state.Score,
-			Step: entities.Barter{
-				From:       state.CurrentID,
-				To:         root.Id,
-				Give:       state.CurrentGive,
-				Wish:       rootWish,
-				FuzzyScore: fuzzy,
-				MatchScore: candidateScore(fuzzy, root.PublicRating, root.ShadowRating),
-				CreatedAt:  maxTime(state.CurrentGive.UpdatedAt, rootWish.UpdatedAt),
-			},
+	if state.Depth >= 1 {
+		closingGive, fuzzy, ok := s.bestClosingGive(ctx, state.CurrentID, rootWish)
+		if ok {
+			closing := &searchState{
+				Parent:      state,
+				CurrentID:   root.ID,
+				CurrentGive: closingGive,
+				Depth:       state.Depth + 1,
+				DepthLimit:  state.DepthLimit,
+				Score:       state.Score,
+				Step: barterVertex{
+					From:       state.CurrentID,
+					To:         root.ID,
+					Give:       closingGive,
+					Wish:       rootWish,
+					FuzzyScore: fuzzy,
+					MatchScore: candidateScore(fuzzy, root.PublicRating, root.ShadowRating),
+					CreatedAt:  maxTime(closingGive.UpdatedAt, rootWish.UpdatedAt),
+				},
+			}
+
+			newChain, err := s.buildChainFromState(ctx, root, rootWish, closing)
+
+			if err == nil {
+				completed = append(completed, newChain)
+			}
 		}
-		completed = append(completed, s.buildChainFromState(ctx, root, rootWish, closing))
 	}
 
-	for _, cand := range s.rankNextCandidates(ctx, state.CurrentID, root.Id, state.CurrentGive, state) {
-		if cand.AccountID == root.Id {
+	for _, cand := range s.rankNextCandidates(ctx, state.CurrentID, root.ID, state.CurrentGive, state) {
+		if cand.AccountID == root.ID {
 			continue
 		}
 
@@ -315,7 +327,7 @@ func (s *Service) expandState(ctx context.Context, root *entities.Account, rootW
 			Depth:       state.Depth + 1,
 			DepthLimit:  minUint8(state.DepthLimit, uint8(allowedDepth(cand.ShadowRating))),
 			Score:       state.Score + cand.MatchScore,
-			Step: entities.Barter{
+			Step: barterVertex{
 				From:       state.CurrentID,
 				To:         cand.AccountID,
 				Give:       state.CurrentGive,
@@ -341,7 +353,7 @@ func (s *Service) expandState(ctx context.Context, root *entities.Account, rootW
 // Getting all possible candidates for constructing a layer brokes into 3 steps: 1. filtering request to the database; 2. further filtering to ensure rootId is present in the slice; 3. sorting on final_score (refer to candidateScore()).
 //
 // Then current graph state is extending with this data and Chain building continues.
-func (s *Service) rankNextCandidates(ctx context.Context, sourceID, rootID uint, give entities.GivedItem, state *searchState) []candidate {
+func (s *Service) rankNextCandidates(ctx context.Context, sourceID, rootID int64, give exchange.GivenItem, state *searchState) []candidate {
 	if !use_cache {
 		return filterCandidates(s.buildCandidatesForGive(ctx, give), sourceID, rootID, state)
 	}
@@ -360,12 +372,13 @@ func (s *Service) rankNextCandidates(ctx context.Context, sourceID, rootID uint,
 
 var (
 	giveCandidatesCache sync.Map
+	accountGivesCache   sync.Map
 	cacheHits           atomic.Int64
 	cacheMisses         atomic.Int64
 	chainWriteMu        sync.Mutex
 )
 
-func (s *Service) buildCandidatesForGive(ctx context.Context, give entities.GivedItem) []candidate {
+func (s *Service) buildCandidatesForGive(ctx context.Context, give exchange.GivenItem) []candidate {
 	possibleCandidates, err := s.repository.FindCandidateAccounts(ctx, give, candidate_limit)
 	if err != nil {
 		log.Printf("Error while loading chain candidates: %v", err)
@@ -376,7 +389,7 @@ func (s *Service) buildCandidatesForGive(ctx context.Context, give entities.Give
 
 	for _, account := range possibleCandidates {
 		for _, wish := range account.Wishes {
-			fuzzy := fuzzySimilarity(give.Name, wish.Name)
+			fuzzy := fuzzySimilarity(give.Title, wish.TitleKeywords)
 			if fuzzy < min_fuzzy_score {
 				continue
 			}
@@ -387,7 +400,7 @@ func (s *Service) buildCandidatesForGive(ctx context.Context, give entities.Give
 			}
 
 			candidates = append(candidates, candidate{
-				AccountID:    account.Id,
+				AccountID:    account.ID,
 				PublicRating: account.PublicRating,
 				ShadowRating: account.ShadowRating,
 				CurrentGive:  currentGive(&account),
@@ -401,7 +414,7 @@ func (s *Service) buildCandidatesForGive(ctx context.Context, give entities.Give
 	return candidates
 }
 
-func filterCandidates(candidates []candidate, sourceID, rootID uint, state *searchState) []candidate {
+func filterCandidates(candidates []candidate, sourceID, rootID int64, state *searchState) []candidate {
 	filtered := make([]candidate, 0, len(candidates))
 
 	for _, cand := range candidates {
@@ -434,45 +447,91 @@ func filterCandidates(candidates []candidate, sourceID, rootID uint, state *sear
 	return filtered
 }
 
-func (s *Service) buildChainFromState(ctx context.Context, root *entities.Account, rootWish entities.WishedItem, state *searchState) entities.Chain {
+func (s *Service) buildChainFromState(ctx context.Context, root *userCandidate, rootWish exchange.WishedItem, state *searchState) (exchange.Chain, error) {
 	path := state.Path()
 	for i := range path {
-		path[i].Id = uint(i + 1)
+		path[i].ID = int64(i + 1)
 	}
 
+	convertedPath := make([]exchange.Barter, len(path))
 	score := 0.0
-	for _, barter := range path {
+	for i, barter := range path {
 		score += barter.MatchScore
+		convertedPath[i] = barter.VertexToBarter()
 	}
 
-	newChain := entities.Chain{
-		Id:        root.Id,
-		UserId:    root.Id,
-		RootId:    root.Id,
+	newChain := exchange.Chain{
+		RootID:    root.ID,
 		RootWish:  rootWish,
-		Barters:   path,
-		Signature: chainSignature(entities.Chain{RootId: root.Id, RootWish: rootWish, Barters: path}),
-		Complete:  len(path) > 0 && len(path) <= max_barters_per_chain,
+		Barters:   convertedPath,
+		Signature: chainSignature(exchange.Chain{RootID: root.ID, RootWish: rootWish, Barters: convertedPath}),
 		Score:     score,
 	}
 
-	dbChain := newChain
-	dbChain.Id = 0
-	dbChain.UserId = root.Id
-	dbChain.Signature = newChain.Signature
+	if score < min_final_score {
+		log.Printf("Chain skipped: score %v/%v", score, min_final_score)
+		return exchange.Chain{}, errors.New("chain score below min_final_score")
+	}
 
 	chainWriteMu.Lock()
 
-	err := s.repository.CreateChain(ctx, dbChain)
+	err := s.repository.CreateChain(ctx, newChain)
+
 	chainWriteMu.Unlock()
+
 	if err != nil {
 		log.Printf("Error while writing the chain: %v", err)
 	}
 
-	return newChain
+	return newChain, nil
 }
 
-func currentGive(account *entities.Account) entities.GivedItem {
+func currentGive(account *userCandidate) exchange.GivenItem {
 	give, _ := account.CurrentGive()
 	return give
+}
+
+// accountGives returns all searching gives of the account, cached per account ID.
+func (s *Service) accountGives(ctx context.Context, accountID int64) []exchange.GivenItem {
+	if cached, ok := accountGivesCache.Load(accountID); ok {
+		return cached.([]exchange.GivenItem)
+	}
+
+	gives, err := s.repository.GetAccountGives(ctx, accountID)
+	if err != nil {
+		log.Printf("Error while loading account gives for %d: %v", accountID, err)
+		return nil
+	}
+
+	actual, _ := accountGivesCache.LoadOrStore(accountID, gives)
+	return actual.([]exchange.GivenItem)
+}
+
+// bestClosingGive picks the give of the last account in the chain that best
+// matches the root wish. Reverse of buildCandidatesForGive: it filters the
+// account's gives by the root wish (category + price + fuzzy >= min_fuzzy_score)
+// and returns the one with the highest fuzzy score.
+func (s *Service) bestClosingGive(ctx context.Context, accountID int64, rootWish exchange.WishedItem) (exchange.GivenItem, float64, bool) {
+	var bestGive exchange.GivenItem
+	bestFuzzy := 0.0
+	found := false
+
+	for _, give := range s.accountGives(ctx, accountID) {
+		if !wishMatchesGive(rootWish, give) {
+			continue
+		}
+
+		fuzzy := fuzzySimilarity(give.Title, rootWish.TitleKeywords)
+		if fuzzy < min_fuzzy_score {
+			continue
+		}
+
+		if !found || fuzzy > bestFuzzy {
+			bestGive = give
+			bestFuzzy = fuzzy
+			found = true
+		}
+	}
+
+	return bestGive, bestFuzzy, found
 }

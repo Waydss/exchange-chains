@@ -86,6 +86,7 @@ func run() error {
 		Me:             userHandler.Me,
 		CreateItem:     itemHandler.Create,
 		CreateChain:    chainHandler.CreateChainsForItem,
+		ListChains:     chainHandler.ListChains,
 		AuthMiddleware: middleware.Auth(jwtProvider),
 	})
 	serverErrors := make(chan error, 1)

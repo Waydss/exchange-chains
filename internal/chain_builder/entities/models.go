@@ -43,32 +43,6 @@ type Account struct {
 	Gives        []GivedItem
 }
 
-func (a Account) CurrentGive() (GivedItem, bool) {
-	if len(a.Gives) == 0 {
-		return GivedItem{}, false
-	}
-	best := a.Gives[0]
-	for _, give := range a.Gives[1:] {
-		if give.UpdatedAt.After(best.UpdatedAt) {
-			best = give
-		}
-	}
-	return best, true
-}
-
-func (a Account) CurrentWish() (WishedItem, bool) {
-	if len(a.Wishes) == 0 {
-		return WishedItem{}, false
-	}
-	best := a.Wishes[0]
-	for _, wish := range a.Wishes[1:] {
-		if wish.UpdatedAt.After(best.UpdatedAt) {
-			best = wish
-		}
-	}
-	return best, true
-}
-
 type GivedItem struct {
 	ID        uint
 	UserId    uint

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/L-ka080/DDB-6-case/internal/chain_builder/entities"
+	"github.com/L-ka080/DDB-6-case/internal/exchange"
 )
 
 func minInt(a, b int) int {
@@ -22,20 +22,12 @@ func minUint8(a, b uint8) uint8 {
 	return b
 }
 
-func chainSignature(chain entities.Chain) string {
-	parts := []string{fmt.Sprintf("%d:%d", chain.RootId, chain.RootWish.ID)}
+func chainSignature(chain exchange.Chain) string {
+	parts := []string{fmt.Sprintf("%d:%d", chain.RootID, chain.RootWish.ID)}
 	for _, barter := range chain.Barters {
 		parts = append(parts, fmt.Sprintf("%d->%d:%d:%d", barter.From, barter.To, barter.Give.ID, barter.Wish.ID))
 	}
 	return strings.Join(parts, "|")
-}
-
-func chainAccountIDs(chain entities.Chain) []uint {
-	ids := []uint{chain.RootId}
-	for _, barter := range chain.Barters {
-		ids = append(ids, barter.From, barter.To)
-	}
-	return ids
 }
 
 func allowedDepth(shadowRating int) int {
@@ -62,9 +54,12 @@ func maxTime(a, b time.Time) time.Time {
 	return b
 }
 
-func wishMatchesGive(wish entities.WishedItem, give entities.GivedItem) bool {
-	if wish.Category != give.Category {
+func wishMatchesGive(wish exchange.WishedItem, give exchange.GivenItem) bool {
+	if wish.CategoryID != give.CategoryID {
 		return false
 	}
-	return give.Price >= wish.MinPrice && give.Price <= wish.MaxPrice
+
+	return wish.PriceMin <= give.PriceMin && wish.PriceMax >= give.PriceMax
+
+	// return give.Price >= wish.MinPrice && give.Price <= wish.MaxPrice
 }
