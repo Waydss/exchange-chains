@@ -1,3 +1,7 @@
+DROP TABLE IF EXISTS chain_barters;
+DROP TABLE IF EXISTS chain_participants;
+DROP TABLE IF EXISTS chains;
+DROP TABLE IF EXISTS wishes;
 DROP TABLE IF EXISTS item_photos;
 DROP TABLE IF EXISTS items;
 DROP TABLE IF EXISTS categories;

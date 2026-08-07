@@ -58,7 +58,7 @@ CREATE TABLE items (
     CONSTRAINT items_condition_valid
         CHECK (condition IN ('new', 'like_new', 'good', 'fair', 'poor')),
     CONSTRAINT items_status_valid
-        CHECK (status IN ('searching', 'in_chain', 'exchanged', 'archived'))
+        CHECK (status IN ('searching', 'in_chain', 'reserved', 'in_transit', 'exchanged', 'archived'))
 );
 
 CREATE INDEX items_user_id_idx ON items (user_id);
@@ -75,3 +75,107 @@ CREATE TABLE item_photos (
 );
 
 CREATE INDEX item_photos_item_id_idx ON item_photos (item_id);
+
+CREATE TABLE wishes (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category_id BIGINT NOT NULL REFERENCES categories(id),
+    price_min BIGINT NOT NULL,
+    price_max BIGINT NOT NULL,
+    title_keywords TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT wishes_price_min_positive
+        CHECK (price_min > 0),
+    CONSTRAINT wishes_price_max_positive
+        CHECK (price_max > 0),
+    CONSTRAINT wishes_price_range_valid
+        CHECK (price_min <= price_max)
+);
+
+CREATE INDEX wishes_user_id_idx ON wishes (user_id);
+CREATE INDEX wishes_category_id_idx ON wishes (category_id);
+CREATE INDEX wishes_category_price_idx ON wishes (category_id, price_min, price_max);
+
+CREATE TABLE chains (
+    id BIGSERIAL PRIMARY KEY,
+    root_user_id BIGINT NOT NULL REFERENCES users(id),
+    root_wish_id BIGINT NOT NULL REFERENCES wishes(id),
+    signature TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'matched',
+    score DOUBLE PRECISION NOT NULL DEFAULT 0,
+    expires_at TIMESTAMPTZ,
+    locked_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ,
+    cancelled_by_user_id BIGINT REFERENCES users(id),
+    cancel_reason TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chains_signature_not_empty
+        CHECK (LENGTH(BTRIM(signature)) > 0),
+    CONSTRAINT chains_status_valid
+        CHECK (status IN ('matched', 'pending', 'locked', 'in_delivery', 'completed', 'cancelled', 'disputed')),
+    CONSTRAINT chains_score_non_negative
+        CHECK (score >= 0)
+);
+
+CREATE INDEX chains_root_user_id_idx ON chains (root_user_id);
+CREATE INDEX chains_root_wish_id_idx ON chains (root_wish_id);
+CREATE INDEX chains_status_score_idx ON chains (status, score DESC);
+CREATE INDEX chains_expires_at_idx ON chains (expires_at);
+
+CREATE TABLE chain_participants (
+    chain_id BIGINT NOT NULL REFERENCES chains(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    status TEXT NOT NULL DEFAULT 'pending',
+    accepted_at TIMESTAMPTZ,
+    declined_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chain_participants_pk
+        PRIMARY KEY (chain_id, user_id),
+    CONSTRAINT chain_participants_status_valid
+        CHECK (status IN ('pending', 'accepted', 'declined', 'expired'))
+);
+
+CREATE INDEX chain_participants_user_id_idx ON chain_participants (user_id);
+CREATE INDEX chain_participants_status_idx ON chain_participants (status);
+
+CREATE TABLE chain_barters (
+    id BIGSERIAL PRIMARY KEY,
+    chain_id BIGINT NOT NULL REFERENCES chains(id) ON DELETE CASCADE,
+    from_user_id BIGINT NOT NULL REFERENCES users(id),
+    to_user_id BIGINT NOT NULL REFERENCES users(id),
+    give_item_id BIGINT NOT NULL REFERENCES items(id),
+    wish_id BIGINT NOT NULL REFERENCES wishes(id),
+    position INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    transfer_method TEXT,
+    given_at TIMESTAMPTZ,
+    received_at TIMESTAMPTZ,
+    rejected_at TIMESTAMPTZ,
+    returned_at TIMESTAMPTZ,
+    rejection_reason TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chain_barters_position_non_negative
+        CHECK (position >= 0),
+    CONSTRAINT chain_barters_users_differ
+        CHECK (from_user_id <> to_user_id),
+    CONSTRAINT chain_barters_status_valid
+        CHECK (status IN ('pending', 'method_selected', 'given', 'received', 'rejected', 'returned')),
+    CONSTRAINT chain_barters_transfer_method_valid
+        CHECK (transfer_method IS NULL OR transfer_method IN ('meetup', 'delivery')),
+    CONSTRAINT chain_barters_position_unique
+        UNIQUE (chain_id, position)
+);
+
+CREATE INDEX chain_barters_chain_id_idx ON chain_barters (chain_id);
+CREATE INDEX chain_barters_from_user_id_idx ON chain_barters (from_user_id);
+CREATE INDEX chain_barters_to_user_id_idx ON chain_barters (to_user_id);
+CREATE INDEX chain_barters_give_item_id_idx ON chain_barters (give_item_id);
+CREATE INDEX chain_barters_wish_id_idx ON chain_barters (wish_id);
+CREATE INDEX chain_barters_status_idx ON chain_barters (status);
