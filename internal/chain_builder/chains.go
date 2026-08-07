@@ -155,7 +155,7 @@ func (s *Service) buildClosedChains(ctx context.Context, root *userCandidate, ro
 	queue := make([]*searchState, 0)
 
 	for _, cand := range s.rankNextCandidates(ctx, root.ID, root.ID, startGive, nil) {
-		edge := barterVertex{
+		edge := barterEdge{
 			From:       root.ID,
 			To:         cand.AccountID,
 			Give:       startGive,
@@ -296,7 +296,7 @@ func (s *Service) expandState(ctx context.Context, root *userCandidate, rootWish
 				Depth:       state.Depth + 1,
 				DepthLimit:  state.DepthLimit,
 				Score:       state.Score,
-				Step: barterVertex{
+				Step: barterEdge{
 					From:       state.CurrentID,
 					To:         root.ID,
 					Give:       closingGive,
@@ -327,7 +327,7 @@ func (s *Service) expandState(ctx context.Context, root *userCandidate, rootWish
 			Depth:       state.Depth + 1,
 			DepthLimit:  minUint8(state.DepthLimit, uint8(allowedDepth(cand.ShadowRating))),
 			Score:       state.Score + cand.MatchScore,
-			Step: barterVertex{
+			Step: barterEdge{
 				From:       state.CurrentID,
 				To:         cand.AccountID,
 				Give:       state.CurrentGive,

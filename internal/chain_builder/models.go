@@ -19,7 +19,7 @@ type userCandidate struct {
 
 // Internal model for chain_builder package,
 // used for representation of the edge (vertex) construction in the graph
-type barterVertex struct {
+type barterEdge struct {
 	ID         int64
 	From       int64
 	To         int64
@@ -30,7 +30,7 @@ type barterVertex struct {
 	CreatedAt  time.Time
 }
 
-func (v barterVertex) VertexToBarter() exchange.Barter {
+func (v barterEdge) VertexToBarter() exchange.Barter {
 	return exchange.Barter{
 		ID:        v.ID,
 		From:      v.From,
@@ -88,7 +88,7 @@ type searchState struct {
 	Parent      *searchState
 	CurrentID   int64
 	CurrentGive exchange.GivenItem
-	Step        barterVertex
+	Step        barterEdge
 	Depth       uint8
 	DepthLimit  uint8
 	Score       float64
@@ -117,12 +117,12 @@ func (s *searchState) PathAccountIDs() []int64 {
 	return ids
 }
 
-func (s *searchState) Path() []barterVertex {
+func (s *searchState) Path() []barterEdge {
 	if s == nil {
 		return nil
 	}
 
-	path := make([]barterVertex, 0, s.Depth)
+	path := make([]barterEdge, 0, s.Depth)
 	for cur := s; cur != nil; cur = cur.Parent {
 		if cur.Depth == 0 {
 			continue

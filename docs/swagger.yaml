@@ -107,6 +107,24 @@ definitions:
     - StatusInChain
     - StatusExchanged
     - StatusArchived
+  rejection.DeclineChainRequest:
+    properties:
+      received_item_id:
+        example: 205
+        type: integer
+    type: object
+  rejection.DeclineChainResponse:
+    properties:
+      chain_id:
+        example: 77
+        type: integer
+      received_item_id:
+        example: 205
+        type: integer
+      status:
+        example: rejection_recorded
+        type: string
+    type: object
   user.AuthResult:
     properties:
       access_token:
@@ -251,6 +269,48 @@ paths:
       summary: Регистрация пользователя
       tags:
       - auth
+  /api/v1/chains/{chainId}/decline:
+    post:
+      consumes:
+      - application/json
+      description: Фиксирует в Redis временный отказ текущего пользователя от товара,
+        который он должен был получить. Состояние цепочки в PostgreSQL пока не изменяется.
+      parameters:
+      - description: ID цепочки
+        in: path
+        name: chainId
+        required: true
+        type: integer
+      - description: Получаемый товар, вызвавший отказ
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/rejection.DeclineChainRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/rejection.DeclineChainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Отказ от цепочки обмена
+      tags:
+      - chains
   /api/v1/items:
     post:
       consumes:
@@ -382,8 +442,8 @@ paths:
       - system
   /ready:
     get:
-      description: Проверяет доступность PostgreSQL и сообщает, готово ли приложение
-        принимать запросы.
+      description: Проверяет доступность PostgreSQL и Redis и сообщает, готово ли
+        приложение принимать запросы.
       produces:
       - application/json
       responses:
