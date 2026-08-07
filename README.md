@@ -1,11 +1,11 @@
 # Цепочка обмена — backend
 
-Backend MVP для многостороннего обмена вещами. Доступны регистрация с именем, JWT-авторизация, публичный профиль и создание предметов с фотографиями.
+Backend MVP для многостороннего обмена вещами. Доступны регистрация с именем, JWT-авторизация, публичный профиль, создание предметов с фотографиями и временный отказ от получаемых товаров.
 
 ## Требования
 
 - Docker с Docker Compose v2;
-- для локального запуска без Docker: Go 1.25+ и доступный PostgreSQL;
+- для локального запуска без Docker: Go 1.25+, PostgreSQL и Redis;
 - для локального линтинга: golangci-lint v2.
 
 ## Запуск
@@ -18,11 +18,12 @@ docker compose up --build
 API доступен на `http://localhost:8080`:
 
 - `GET /health` — проверка процесса;
-- `GET /ready` — проверка подключения к PostgreSQL.
+- `GET /ready` — проверка подключения к PostgreSQL и Redis.
 - `POST /api/v1/auth/register` — регистрация;
 - `POST /api/v1/auth/login` — вход;
 - `GET /api/v1/me` — профиль по JWT.
 - `POST /api/v1/items` — создание предмета по JWT;
+- `POST /api/v1/chains/{chainId}/decline` — временный отказ от получаемого товара по JWT;
 - `GET /swagger/index.html` — интерактивная Swagger UI.
 
 Загруженные фотографии доступны по относительным URL вида `/uploads/items/{item_id}/{filename}`.
@@ -90,6 +91,25 @@ curl -X POST http://localhost:8080/api/v1/items \
 
 Фотографии необязательны. Допускается не более 5 файлов по 10 МиБ каждый; поддерживаются JPEG, PNG и WEBP.
 
+Отказ от получаемого товара:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/chains/77/decline \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"received_item_id":205}'
+```
+
+На текущем этапе endpoint записывает отказ в Redis и не изменяет цепочку в PostgreSQL. Для каждого пользователя используется Sorted Set `rejected_items:{user_id}`: member содержит ID товара, score — Unix timestamp окончания блокировки. Срок повторного отказа обновляется.
+
+Посмотреть отказы пользователя:
+
+```bash
+docker compose exec redis redis-cli ZRANGE rejected_items:42 0 -1 WITHSCORES
+```
+
+Если задан `REDIS_PASSWORD`, добавьте к `redis-cli` параметры `--no-auth-warning -a "$REDIS_PASSWORD"`.
+
 ## Swagger
 
 После запуска приложения интерактивная документация доступна по адресу [http://localhost:8080/swagger/index.html](http://localhost:8080/swagger/index.html).
@@ -126,6 +146,11 @@ docker run --rm -v "$(pwd):/app" -w /app golangci/golangci-lint:v2.5.0 golangci-
 - `APP_PORT` — HTTP-порт;
 - `APP_ENV` — имя окружения;
 - `DATABASE_URL` — PostgreSQL connection URL;
+- `REDIS_ADDR` — адрес Redis, например `redis:6379` внутри Docker Compose;
+- `REDIS_PASSWORD` — пароль Redis; может быть пустым для локальной разработки;
+- `REDIS_DB` — номер логической базы Redis;
+- `REDIS_DIAL_TIMEOUT`, `REDIS_READ_TIMEOUT`, `REDIS_WRITE_TIMEOUT` — сетевые таймауты Redis;
+- `REJECTED_ITEM_TTL` — срок блокировки отклонённого товара, по умолчанию `336h` (14 дней);
 - `SHUTDOWN_TIMEOUT` — таймаут graceful shutdown в формате Go duration, например `10s`.
 - `JWT_SECRET` — секрет подписи access token;
 - `JWT_TTL` — время жизни access token, например `168h`.
@@ -134,6 +159,8 @@ docker run --rm -v "$(pwd):/app" -w /app golangci/golangci-lint:v2.5.0 golangci-
 - `MAX_ITEM_PHOTOS` — максимальное количество фотографий предмета.
 
 При запуске через Docker файлы хранятся в `/app/uploads` внутри backend-контейнера и сохраняются в именованном volume `item_uploads` после пересоздания контейнера.
+
+Redis работает с AOF persistence и хранит данные в volume `redis_data`. Один раз в сутки около 03:00 по часовому поясу `Europe/Moscow` backend находит ключи `rejected_items:*` через `SCAN` и удаляет просроченные элементы. Текущий scheduler рассчитан на один экземпляр backend.
 
 ## Пока не реализовано
 

@@ -17,6 +17,26 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  redis:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - /bin/sh
+      - -c
+      - exec redis-server --appendonly yes $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - if [ -n "$$REDIS_PASSWORD" ]; then redis-cli --no-auth-warning -a "$$REDIS_PASSWORD" ping; else redis-cli ping; fi
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -25,6 +45,13 @@ services:
       APP_PORT: ${APP_PORT:-8080}
       APP_ENV: ${APP_ENV:-local}
       DATABASE_URL: postgres://${POSTGRES_USER:-exchange}:${POSTGRES_PASSWORD:-exchange}@postgres:5432/${POSTGRES_DB:-exchange}?sslmode=disable
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_DIAL_TIMEOUT: ${REDIS_DIAL_TIMEOUT:-5s}
+      REDIS_READ_TIMEOUT: ${REDIS_READ_TIMEOUT:-2s}
+      REDIS_WRITE_TIMEOUT: ${REDIS_WRITE_TIMEOUT:-2s}
+      REJECTED_ITEM_TTL: ${REJECTED_ITEM_TTL:-336h}
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_TTL: ${JWT_TTL:?JWT_TTL is required}
@@ -36,6 +63,8 @@ services:
       - "${APP_PORT:-8080}:${APP_PORT:-8080}"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - item_uploads:${UPLOAD_DIR:-/app/uploads}
@@ -56,4 +85,5 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   item_uploads:
