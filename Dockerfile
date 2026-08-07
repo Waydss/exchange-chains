@@ -14,7 +14,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 FROM alpine:3.21
 
-RUN apk add --no-cache ca-certificates \
+RUN apk add --no-cache ca-certificates tzdata \
 	&& addgroup -S app \
 	&& adduser -S -G app app \
 	&& mkdir -p /app/uploads \

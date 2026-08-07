@@ -17,8 +17,10 @@ import (
 	"github.com/L-ka080/DDB-6-case/internal/platform/database"
 	"github.com/L-ka080/DDB-6-case/internal/platform/httpserver"
 	"github.com/L-ka080/DDB-6-case/internal/platform/httpserver/middleware"
+	"github.com/L-ka080/DDB-6-case/internal/platform/redisclient"
 	"github.com/L-ka080/DDB-6-case/internal/platform/security"
 	"github.com/L-ka080/DDB-6-case/internal/platform/storage"
+	"github.com/L-ka080/DDB-6-case/internal/rejection"
 	"github.com/L-ka080/DDB-6-case/internal/user"
 )
 
@@ -59,6 +61,23 @@ func run() error {
 	}
 	defer pool.Close()
 
+	redisConnection, err := redisclient.Connect(appContext, redisclient.Config{
+		Addr:         cfg.RedisAddr,
+		Password:     cfg.RedisPassword,
+		DB:           cfg.RedisDB,
+		DialTimeout:  cfg.RedisDialTimeout,
+		ReadTimeout:  cfg.RedisReadTimeout,
+		WriteTimeout: cfg.RedisWriteTimeout,
+	})
+	if err != nil {
+		return fmt.Errorf("connect to Redis: %w", err)
+	}
+	defer func() {
+		if err := redisConnection.Close(); err != nil {
+			log.Printf("close Redis connection: %v", err)
+		}
+	}()
+
 	jwtProvider, err := security.NewJWT(cfg.JWTSecret, cfg.JWTTTL)
 	if err != nil {
 		return fmt.Errorf("initialize JWT provider: %w", err)
@@ -79,13 +98,25 @@ func run() error {
 	chainService := cb.NewService(chainRepository)
 	chainHandler := cb.NewHandler(chainService)
 	workersDone := chainService.StartChainRequestWorkers(appContext)
+	rejectionStore := rejection.NewRedisStore(redisConnection.Client(), cfg.RejectedItemTTL)
+	declineChainUseCase := rejection.NewDeclineChainUseCase(rejectionStore)
+	declineChainHandler := rejection.NewHandler(declineChainUseCase)
+	cleanupScheduler, err := rejection.NewScheduler(rejectionStore)
+	if err != nil {
+		return fmt.Errorf("initialize rejected item cleanup: %w", err)
+	}
+	cleanupDone := cleanupScheduler.Start(appContext)
 
-	server := httpserver.New(cfg.Port, pool, cfg.UploadDir, httpserver.Routes{
+	server := httpserver.New(cfg.Port, httpserver.ReadinessDependencies{
+		Database: pool,
+		Redis:    redisConnection,
+	}, cfg.UploadDir, httpserver.Routes{
 		Register:       userHandler.Register,
 		Login:          userHandler.Login,
 		Me:             userHandler.Me,
 		CreateItem:     itemHandler.Create,
 		CreateChain:    chainHandler.CreateChainsForItem,
+		DeclineChain:   declineChainHandler.DeclineChain,
 		AuthMiddleware: middleware.Auth(jwtProvider),
 	})
 	serverErrors := make(chan error, 1)
@@ -117,6 +148,7 @@ func run() error {
 	}
 
 	<-workersDone
+	<-cleanupDone
 
 	log.Print("application stopped gracefully")
 	return nil

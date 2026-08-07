@@ -19,9 +19,15 @@ const (
 	readyCheckTimeout = 2 * time.Second
 )
 
-// Pinger is the database capability required by the readiness endpoint.
+// Pinger is the external dependency capability required by the readiness endpoint.
 type Pinger interface {
 	Ping(ctx context.Context) error
+}
+
+// ReadinessDependencies contains external services required to serve requests.
+type ReadinessDependencies struct {
+	Database Pinger
+	Redis    Pinger
 }
 
 // Routes contains the application handlers mounted by the HTTP server.
@@ -31,6 +37,7 @@ type Routes struct {
 	Me             gin.HandlerFunc
 	CreateItem     gin.HandlerFunc
 	CreateChain    gin.HandlerFunc
+	DeclineChain   gin.HandlerFunc
 	AuthMiddleware gin.HandlerFunc
 }
 
@@ -40,7 +47,7 @@ type Server struct {
 }
 
 // New configures the Gin router and HTTP server.
-func New(port string, database Pinger, uploadDirectory string, routes Routes) *Server {
+func New(port string, dependencies ReadinessDependencies, uploadDirectory string, routes Routes) *Server {
 	router := gin.New()
 	router.HandleMethodNotAllowed = true
 	router.Use(
@@ -53,7 +60,7 @@ func New(port string, database Pinger, uploadDirectory string, routes Routes) *S
 	)
 
 	router.GET("/health", healthHandler)
-	router.GET("/ready", readyHandler(database))
+	router.GET("/ready", readyHandler(dependencies))
 	router.GET("/swagger/*any", swaggerHandler())
 	router.Static("/uploads", uploadDirectory)
 
@@ -67,6 +74,7 @@ func New(port string, database Pinger, uploadDirectory string, routes Routes) *S
 	protected.GET("/me", routes.Me)
 	protected.POST("/items", routes.CreateItem)
 	protected.POST("/chain", routes.CreateChain)
+	protected.POST("/chains/:chainId/decline", routes.DeclineChain)
 
 	router.NoRoute(func(c *gin.Context) {
 		WriteError(c, http.StatusNotFound, "not_found", "resource not found")
@@ -117,20 +125,25 @@ func healthHandler(c *gin.Context) {
 // readyHandler godoc
 //
 // @Summary Проверка готовности
-// @Description Проверяет доступность PostgreSQL и сообщает, готово ли приложение принимать запросы.
+// @Description Проверяет доступность PostgreSQL и Redis и сообщает, готово ли приложение принимать запросы.
 // @Tags system
 // @Produce json
 // @Success 200 {object} ReadinessResponse
 // @Failure 503 {object} ErrorResponse
 // @Router /ready [get]
-func readyHandler(database Pinger) gin.HandlerFunc {
+func readyHandler(dependencies ReadinessDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), readyCheckTimeout)
 		defer cancel()
 
-		if err := database.Ping(ctx); err != nil {
+		if err := dependencies.Database.Ping(ctx); err != nil {
 			log.Printf("readiness check failed: %v", err)
 			WriteError(c, http.StatusServiceUnavailable, "database_unavailable", "database is unavailable")
+			return
+		}
+		if err := dependencies.Redis.Ping(ctx); err != nil {
+			log.Printf("Redis readiness check failed: %v", err)
+			WriteError(c, http.StatusServiceUnavailable, "redis_unavailable", "redis is unavailable")
 			return
 		}
 
