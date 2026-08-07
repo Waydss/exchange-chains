@@ -22,6 +22,8 @@ type Status string
 const (
 	StatusSearching Status = "searching"
 	StatusInChain   Status = "in_chain"
+	StatusReserved  Status = "reserved"
+	StatusInTransit Status = "in_transit"
 	StatusExchanged Status = "exchanged"
 	StatusArchived  Status = "archived"
 )

@@ -1,0 +1,22 @@
+.wrapper {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+}
+
+.card {
+  width: 400px;
+  border-radius: var(--radius-lg);
+}
+
+.title {
+  text-align: center;
+}
+
+.footer {
+  margin-top: 14px;
+  margin-bottom: 0;
+  text-align: center;
+}
