@@ -79,7 +79,7 @@ func (h *Handler) CreateChainsForItem(ctx *gin.Context) {
 		return
 	}
 
-	h.service.EnqueueChainRequest(ChainRequest{User: &foundAccount, WishedItemId: request.WishedItemId})
+	h.service.EnqueueChainRequest(request.UserId, request.WishedItemId)
 
 	ctx.Status(http.StatusAccepted)
 }
@@ -102,8 +102,8 @@ type ChainDTO struct {
 }
 
 type ChainRequest struct {
-	User         *userCandidate `json:"user_id"`
-	WishedItemId int64          `json:"wished_item"`
+	UserID       int64 `json:"user_id"`
+	WishedItemId int64 `json:"wished_item"`
 }
 
 // ListChains godoc

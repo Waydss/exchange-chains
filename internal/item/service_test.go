@@ -138,10 +138,14 @@ func (s *fakeStorage) DeleteItemPhotos(_ context.Context, itemID int64) error {
 	return nil
 }
 
+type fakeChainEnqueer struct{}
+
+func (fce fakeChainEnqueer) EnqueueChainRequest(userId, wishedItemID int64) {}
+
 func TestCreateWithoutPhotos(t *testing.T) {
 	repository := &fakeRepository{}
 	storage := &fakeStorage{}
-	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5)
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
 
 	result, err := service.Create(context.Background(), validCreateInput())
 	if err != nil {
@@ -165,7 +169,7 @@ func TestCreateWithoutPhotos(t *testing.T) {
 func TestCreateWithMultiplePhotos(t *testing.T) {
 	repository := &fakeRepository{}
 	storage := &fakeStorage{}
-	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5)
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
 	input := validCreateInput()
 	input.Photos = []item.PhotoUpload{
 		{Reader: bytes.NewReader([]byte("photo-1")), Size: 7},
@@ -209,7 +213,7 @@ func TestCreateRejectsUnknownCategories(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := item.NewService(&fakeRepository{}, newFakeCategoryRepository(), &fakeStorage{}, 5)
+			service := item.NewService(&fakeRepository{}, newFakeCategoryRepository(), &fakeStorage{}, 5, fakeChainEnqueer{})
 			input := validCreateInput()
 			tt.configure(&input)
 
@@ -251,7 +255,7 @@ func TestCreateRejectsInvalidFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := item.NewService(&fakeRepository{}, newFakeCategoryRepository(), &fakeStorage{}, 5)
+			service := item.NewService(&fakeRepository{}, newFakeCategoryRepository(), &fakeStorage{}, 5, fakeChainEnqueer{})
 			input := validCreateInput()
 			tt.configure(&input)
 
@@ -276,7 +280,7 @@ func TestCreateReturnsStorageErrorsAndCleansFiles(t *testing.T) {
 		t.Run(storageError.Error(), func(t *testing.T) {
 			repository := &fakeRepository{}
 			storage := &fakeStorage{error: storageError}
-			service := item.NewService(repository, newFakeCategoryRepository(), storage, 5)
+			service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
 
 			_, err := service.Create(context.Background(), validCreateInput())
 			if !errors.Is(err, storageError) {
@@ -291,7 +295,7 @@ func TestCreateReturnsStorageErrorsAndCleansFiles(t *testing.T) {
 
 func TestCreateReturnsRepositoryError(t *testing.T) {
 	repository := &fakeRepository{transactionError: errRepository}
-	service := item.NewService(repository, newFakeCategoryRepository(), &fakeStorage{}, 5)
+	service := item.NewService(repository, newFakeCategoryRepository(), &fakeStorage{}, 5, fakeChainEnqueer{})
 
 	_, err := service.Create(context.Background(), validCreateInput())
 	if !errors.Is(err, errRepository) {
@@ -302,7 +306,7 @@ func TestCreateReturnsRepositoryError(t *testing.T) {
 func TestCreateCleansFilesWhenPhotoMetadataFails(t *testing.T) {
 	repository := &fakeRepository{photoError: errRepository}
 	storage := &fakeStorage{}
-	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5)
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
 	input := validCreateInput()
 	input.Photos = []item.PhotoUpload{{Reader: bytes.NewReader([]byte("photo")), Size: 5}}
 

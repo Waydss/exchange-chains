@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/L-ka080/DDB-6-case/internal/exchange"
-	"github.com/L-ka080/DDB-6-case/internal/item"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -316,7 +315,7 @@ func (r *PostgresRepository) getGives(ctx context.Context, accountIDs []int64) (
 		); err != nil {
 			return nil, fmt.Errorf("scan account give: %w", err)
 		}
-		give.Status = item.Status(status)
+		give.Status = "searching"
 		result[give.UserID] = append(result[give.UserID], give)
 	}
 	if err := rows.Err(); err != nil {
@@ -428,7 +427,7 @@ func (r *PostgresRepository) ListChains(ctx context.Context) ([]exchange.Chain, 
 		}
 		barter.Give.ID = giveID
 		barter.Wish.ID = wishID
-		barter.Give.Status = item.Status(giveStatus)
+		barter.Give.Status = "searching"
 		barter.Status = exchange.BarterStatus(status)
 		barter.Status = exchange.BarterStatus(status)
 		idx, ok := chainIndex[chainID]

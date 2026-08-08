@@ -92,11 +92,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("initialize file storage: %w", err)
 	}
-	itemService := item.NewService(itemRepository, categoryRepository, fileStorage, cfg.MaxItemPhotos)
-	itemHandler := item.NewHandler(itemService, cfg.MaxUploadSize, cfg.MaxItemPhotos)
 	chainRepository := cb.NewPostgresRepository(pool)
 	chainService := cb.NewService(chainRepository)
 	chainHandler := cb.NewHandler(chainService)
+	itemService := item.NewService(itemRepository, categoryRepository, fileStorage, cfg.MaxItemPhotos, chainService)
+	itemHandler := item.NewHandler(itemService, cfg.MaxUploadSize, cfg.MaxItemPhotos)
 	workersDone := chainService.StartChainRequestWorkers(appContext)
 	rejectionStore := rejection.NewRedisStore(redisConnection.Client(), cfg.RejectedItemTTL)
 	declineChainUseCase := rejection.NewDeclineChainUseCase(rejectionStore)

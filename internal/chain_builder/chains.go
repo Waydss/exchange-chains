@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/L-ka080/DDB-6-case/internal/exchange"
+	"github.com/jackc/pgx/v5"
 )
 
 // errChainScoreTooLow signals a chain that does not pass the final score gate.
@@ -69,8 +70,8 @@ func NewService(repository Repository) *Service {
 }
 
 // EnqueueChainRequest adds a request to the asynchronous chain-building queue.
-func (s *Service) EnqueueChainRequest(req ChainRequest) {
-	s.queue <- req
+func (s *Service) EnqueueChainRequest(userID, wishedItemID int64) {
+	s.queue <- ChainRequest{UserID: userID, WishedItemId: wishedItemID}
 }
 
 // Entry point for the Chain evaluation process. This function looks over the ChainRequestQuene
@@ -105,11 +106,17 @@ func (s *Service) StartChainRequestWorkers(ctx context.Context) <-chan struct{} 
 	return done
 }
 
-// Function for ChainRequest validation
+// Function for ChainRequest validation. Please make sure to validate the IDs beforehand,
+// so we could return HTTP error about it.
 func (s *Service) handleChainRequest(ctx context.Context, req ChainRequest) {
-	root := req.User
-	if root == nil {
-		log.Println("Chain request skipped: account pointer is nil")
+	root, err := s.repository.GetAccount(ctx, req.UserID)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Println("Chain request skipped: account ID has not been validated")
+			return
+		}
+		log.Println("Chain request skipped: database error")
 		return
 	}
 
@@ -121,12 +128,12 @@ func (s *Service) handleChainRequest(ctx context.Context, req ChainRequest) {
 		}
 	}
 	if wishIndex < 0 {
-		log.Printf("Chain request skipped: wished item id %d not found for account id %d;", req.WishedItemId, root.ID)
+		log.Printf("Chain request skipped: WishedItemID [%d] has not been found for AccountID [%d];", req.WishedItemId, root.ID)
 		return
 	}
 
 	start := time.Now()
-	chains := s.buildClosedChains(ctx, root, wishIndex)
+	chains := s.buildClosedChains(ctx, &root, wishIndex)
 	log.Printf("Chain request done: account=%d wish=%d chains=%d in %v", root.ID, req.WishedItemId, len(chains), time.Since(start))
 }
 
