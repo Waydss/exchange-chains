@@ -9,9 +9,7 @@ import (
 	"golang.org/x/net/webdav"
 )
 
-// swaggerHandler combines gin-swagger's generated page and specification
-// handlers with the static assets exposed by swaggo/files/v2.
-func swaggerHandler() gin.HandlerFunc {
+func SwaggerHandler() gin.HandlerFunc {
 	dynamicHandler := ginSwagger.WrapHandler(&webdav.Handler{
 		FileSystem: webdav.NewMemFS(),
 		LockSystem: webdav.NewMemLS(),
