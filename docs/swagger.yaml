@@ -91,18 +91,6 @@ definitions:
       error:
         $ref: '#/definitions/httpserver.ErrorDetail'
     type: object
-  httpserver.HealthResponse:
-    properties:
-      status:
-        example: ok
-        type: string
-    type: object
-  httpserver.ReadinessResponse:
-    properties:
-      status:
-        example: ready
-        type: string
-    type: object
   item.CategoryResponse:
     properties:
       id:
@@ -276,7 +264,7 @@ info:
   contact:
     email: grigorevvadim875@yandex.ru
     name: Grigorev Vadim
-  description: Backend API проекта «Цепочка обмена».
+  description: Backend API РїСЂРѕРµРєС‚Р° В«Р¦РµРїРѕС‡РєР° РѕР±РјРµРЅР°В».
   title: Exchange Chain API
   version: "1.0"
 paths:
@@ -452,22 +440,6 @@ paths:
       summary: Отказ от цепочки обмена
       tags:
       - chains
-  /api/v1/chains/accept:
-    post:
-      produces:
-      - application/json
-      responses:
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpserver.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/httpserver.ErrorResponse'
-      summary: Принятие своего участия в цепочке
-      tags:
-      - chains
   /api/v1/chains/by-item:
     get:
       description: Возвращает цепочки обмена, построенные для указанного желания пользователя.
@@ -528,22 +500,6 @@ paths:
           schema:
             $ref: '#/definitions/httpserver.ErrorResponse'
       summary: Цепочки пользователя
-      tags:
-      - chains
-  /api/v1/chains/decline:
-    post:
-      produces:
-      - application/json
-      responses:
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpserver.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/httpserver.ErrorResponse'
-      summary: Отклонение своего участия в цепочке
       tags:
       - chains
   /api/v1/items:
@@ -662,42 +618,11 @@ paths:
       summary: Профиль текущего пользователя
       tags:
       - users
-  /health:
-    get:
-      description: Возвращает состояние HTTP-процесса без проверки внешних зависимостей.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpserver.HealthResponse'
-      summary: Проверка работоспособности
-      tags:
-      - system
-  /ready:
-    get:
-      description: Проверяет доступность PostgreSQL и Redis и сообщает, готово ли
-        приложение принимать запросы.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpserver.ReadinessResponse'
-        "503":
-          description: Service Unavailable
-          schema:
-            $ref: '#/definitions/httpserver.ErrorResponse'
-      summary: Проверка готовности
-      tags:
-      - system
 schemes:
 - http
 securityDefinitions:
   BearerAuth:
-    description: 'Введите токен в формате: Bearer <access_token>'
+    description: 'Р’РІРµРґРёС‚Рµ С‚РѕРєРµРЅ РІ С„РѕСЂРјР°С‚Рµ: Bearer <access_token>'
     in: header
     name: Authorization
     type: apiKey

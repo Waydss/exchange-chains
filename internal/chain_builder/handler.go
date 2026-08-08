@@ -219,28 +219,12 @@ func (h *Handler) GetChainsByUser(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response)
 }
 
-// AcceptChain godoc
-//
-// @Summary Принятие своего участия в цепочке
-// @Tags chains
-// @Produce json
-// @Failure 404 {object} httpserver.ErrorResponse
-// @Failure 500 {object} httpserver.ErrorResponse
-// @Router /api/v1/chains/accept [post]
 func (h *Handler) AcceptChain(ctx *gin.Context) {
 	httpserver.WriteError(ctx, http.StatusInternalServerError, "not_implemented", "not implemented")
 
 	// h.service.AcceptChain(ctx, )
 }
 
-// DiscardChain godoc
-//
-// @Summary Отклонение своего участия в цепочке
-// @Tags chains
-// @Produce json
-// @Failure 404 {object} httpserver.ErrorResponse
-// @Failure 500 {object} httpserver.ErrorResponse
-// @Router /api/v1/chains/decline [post]
 func (h *Handler) DiscardChain(ctx *gin.Context) {
 
 	httpserver.WriteError(ctx, http.StatusInternalServerError, "not_implemented", "not implemented")

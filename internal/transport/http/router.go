@@ -13,11 +13,17 @@ import (
 const readyCheckTimeout = 2 * time.Second
 
 type Routes struct {
-	Register       gin.HandlerFunc
-	Login          gin.HandlerFunc
-	Me             gin.HandlerFunc
-	CreateItem     gin.HandlerFunc
-	CreateChain    gin.HandlerFunc
+	Register   gin.HandlerFunc
+	Login      gin.HandlerFunc
+	Me         gin.HandlerFunc
+	CreateItem gin.HandlerFunc
+
+	// FIXME Remove this at one point...
+	CreateChain gin.HandlerFunc
+
+	GetChainsByUser gin.HandlerFunc
+	GetChainsByItem gin.HandlerFunc
+
 	DeclineChain   gin.HandlerFunc
 	AuthMiddleware gin.HandlerFunc
 }

@@ -211,31 +211,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/chains/accept": {
-            "post": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chains"
-                ],
-                "summary": "Принятие своего участия в цепочке",
-                "responses": {
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpserver.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httpserver.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/chains/by-item": {
             "get": {
                 "description": "Возвращает цепочки обмена, построенные для указанного желания пользователя. Идентификаторы передаются как query-параметры user_id и wished_item_id.",
@@ -312,31 +287,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpserver.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httpserver.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/chains/decline": {
-            "post": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chains"
-                ],
-                "summary": "Отклонение своего участия в цепочке",
-                "responses": {
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/httpserver.ErrorResponse"
                         }
@@ -587,52 +537,6 @@ const docTemplate = `{
                     }
                 }
             }
-        },
-        "/health": {
-            "get": {
-                "description": "Возвращает состояние HTTP-процесса без проверки внешних зависимостей.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "system"
-                ],
-                "summary": "Проверка работоспособности",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpserver.HealthResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/ready": {
-            "get": {
-                "description": "Проверяет доступность PostgreSQL и Redis и сообщает, готово ли приложение принимать запросы.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "system"
-                ],
-                "summary": "Проверка готовности",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpserver.ReadinessResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/httpserver.ErrorResponse"
-                        }
-                    }
-                }
-            }
         }
     },
     "definitions": {
@@ -772,24 +676,6 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "$ref": "#/definitions/httpserver.ErrorDetail"
-                }
-            }
-        },
-        "httpserver.HealthResponse": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "example": "ok"
-                }
-            }
-        },
-        "httpserver.ReadinessResponse": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "example": "ready"
                 }
             }
         },
@@ -1030,7 +916,7 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "BearerAuth": {
-            "description": "Введите токен в формате: Bearer \u003caccess_token\u003e",
+            "description": "Р’РІРµРґРёС‚Рµ С‚РѕРєРµРЅ РІ С„РѕСЂРјР°С‚Рµ: Bearer \u003caccess_token\u003e",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
@@ -1045,7 +931,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{"http"},
 	Title:            "Exchange Chain API",
-	Description:      "Backend API проекта «Цепочка обмена».",
+	Description:      "Backend API РїСЂРѕРµРєС‚Р° В«Р¦РµРїРѕС‡РєР° РѕР±РјРµРЅР°В».",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

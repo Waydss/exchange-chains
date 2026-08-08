@@ -107,11 +107,17 @@ func New() (*App, error) {
 		},
 		cfg.Upload.Dir,
 		transporthttp.Routes{
-			Register:       handlers.user.Register,
-			Login:          handlers.user.Login,
-			Me:             handlers.user.Me,
-			CreateItem:     handlers.item.Create,
-			CreateChain:    handlers.chain.CreateChainsForItem,
+			Register:   handlers.user.Register,
+			Login:      handlers.user.Login,
+			Me:         handlers.user.Me,
+			CreateItem: handlers.item.Create,
+
+			// FIXME Remove this at one point...
+			CreateChain: handlers.chain.CreateChainsForItem,
+
+			GetChainsByUser: handlers.chain.GetChainsByUser,
+			GetChainsByItem: handlers.chain.GetChainsByItem,
+
 			DeclineChain:   handlers.rejection.DeclineChain,
 			AuthMiddleware: middleware.Auth(jwtProvider),
 		},
@@ -188,10 +194,15 @@ func newServices(
 ) services {
 	rejectionStore := rejection.NewRedisStore(redisConnection.Client(), cfg.Rejection.ItemTTL)
 
+	userService := user.NewService(repositories.user, security.NewPasswordHasher(), jwtProvider)
+
+	chainService := cb.NewService(repositories.chain)
+	itemService := item.NewService(repositories.item, repositories.category, fileStorage, cfg.Upload.MaxItemPhotos, chainService)
+
 	return services{
-		user:      user.NewService(repositories.user, security.NewPasswordHasher(), jwtProvider),
-		item:      item.NewService(repositories.item, repositories.category, fileStorage, cfg.Upload.MaxItemPhotos),
-		chain:     cb.NewService(repositories.chain),
+		user:      userService,
+		item:      itemService,
+		chain:     chainService,
 		decline:   rejection.NewDeclineChainUseCase(rejectionStore),
 		rejection: rejectionStore,
 	}
