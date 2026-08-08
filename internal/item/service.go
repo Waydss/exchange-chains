@@ -22,6 +22,7 @@ type Service struct {
 	categoryRepository CategoryRepository
 	fileStorage        FileStorage
 	maxPhotos          int
+	chainEnqueer       ChainEnqueer
 }
 
 // NewService constructs the item creation service.
@@ -30,13 +31,19 @@ func NewService(
 	categoryRepository CategoryRepository,
 	fileStorage FileStorage,
 	maxPhotos int,
+	chainEnqueer ChainEnqueer,
 ) *Service {
 	return &Service{
 		repository:         repository,
 		categoryRepository: categoryRepository,
 		fileStorage:        fileStorage,
 		maxPhotos:          maxPhotos,
+		chainEnqueer:       chainEnqueer,
 	}
+}
+
+type ChainEnqueer interface {
+	EnqueueChainRequest(userID, wishedItemID int64)
 }
 
 // Create validates and atomically persists an item and its photo metadata.
@@ -110,6 +117,8 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (CreateResponse
 
 		return CreateResponse{}, err
 	}
+
+	s.chainEnqueer.EnqueueChainRequest(createdItem.UserID, createdItem.ID)
 
 	return toCreateResponse(createdItem, itemCategory, wantedCategory, createdPhotos), nil
 }
