@@ -119,6 +119,234 @@
                 }
             }
         },
+        "/api/v1/chain": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ставит запрос на построение цепочек обмена для указанного желания в очередь. Проверяет существование аккаунта и принадлежность желания этому аккаунту, затем отвечает 202 Accepted; построение выполняется асинхронно воркерами Service, результат пишется в БД по мере нахождения цепей.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Запуск построения цепочек для желания",
+                "parameters": [
+                    {
+                        "description": "Идентификатор пользователя",
+                        "name": "user_id",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Идентификатор желания",
+                        "name": "wished_item_id",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains": {
+            "get": {
+                "description": "Возвращает все цепочки обмена с вложенными бартерами.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Список цепочек",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cb.ListChainsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/accept": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Принятие своего участия в цепочке",
+                "responses": {
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/by-item": {
+            "get": {
+                "description": "Возвращает цепочки обмена, построенные для указанного желания пользователя. Идентификаторы передаются как query-параметры user_id и wished_item_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Цепочки для желания",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Идентификатор пользователя",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Идентификатор желания",
+                        "name": "wished_item_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cb.ListChainsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/by-user": {
+            "get": {
+                "description": "Возвращает цепочки обмена, в которых пользователь является корневым участником или участником бартера. Идентификатор передаётся как query-параметр user_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Цепочки пользователя",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Идентификатор пользователя",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cb.ListChainsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/decline": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Отклонение своего участия в цепочке",
+                "responses": {
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/chains/{chainId}/decline": {
             "post": {
                 "security": [
@@ -405,6 +633,124 @@
         }
     },
     "definitions": {
+        "cb.BarterReadDTO": {
+            "type": "object",
+            "properties": {
+                "from_user_id": {
+                    "type": "integer"
+                },
+                "give": {
+                    "$ref": "#/definitions/cb.GiveReadDTO"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "to_user_id": {
+                    "type": "integer"
+                },
+                "wish": {
+                    "$ref": "#/definitions/cb.WishReadDTO"
+                }
+            }
+        },
+        "cb.ChainReadDTO": {
+            "type": "object",
+            "properties": {
+                "barters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cb.BarterReadDTO"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "root_id": {
+                    "type": "integer"
+                },
+                "root_wish": {
+                    "$ref": "#/definitions/cb.WishReadDTO"
+                },
+                "score": {
+                    "type": "number"
+                },
+                "signature": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "cb.GiveReadDTO": {
+            "type": "object",
+            "properties": {
+                "category_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "price_max": {
+                    "type": "integer"
+                },
+                "price_min": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "cb.ListChainsResponse": {
+            "type": "object",
+            "properties": {
+                "chains": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cb.ChainReadDTO"
+                    }
+                }
+            }
+        },
+        "cb.WishReadDTO": {
+            "type": "object",
+            "properties": {
+                "category_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "price_max": {
+                    "type": "integer"
+                },
+                "price_min": {
+                    "type": "integer"
+                },
+                "title_keywords": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "httpserver.ErrorDetail": {
             "type": "object",
             "properties": {
@@ -549,12 +895,16 @@
             "enum": [
                 "searching",
                 "in_chain",
+                "reserved",
+                "in_transit",
                 "exchanged",
                 "archived"
             ],
             "x-enum-varnames": [
                 "StatusSearching",
                 "StatusInChain",
+                "StatusReserved",
+                "StatusInTransit",
                 "StatusExchanged",
                 "StatusArchived"
             ]

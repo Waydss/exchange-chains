@@ -111,14 +111,19 @@ func run() error {
 		Database: pool,
 		Redis:    redisConnection,
 	}, cfg.UploadDir, httpserver.Routes{
-		Register:       userHandler.Register,
-		Login:          userHandler.Login,
-		Me:             userHandler.Me,
-		CreateItem:     itemHandler.Create,
-		CreateChain:    chainHandler.CreateChainsForItem,
-		DeclineChain:   declineChainHandler.DeclineChain,
-		ListChains:     chainHandler.ListChains,
-		AuthMiddleware: middleware.Auth(jwtProvider),
+		Register:   userHandler.Register,
+		Login:      userHandler.Login,
+		Me:         userHandler.Me,
+		CreateItem: itemHandler.Create,
+
+		// FIXME Remove this at one point...
+		CreateChain: chainHandler.CreateChainsForItem,
+
+		GetChainsByItem: chainHandler.GetChainsByItem,
+		GetChainsByUser: chainHandler.GetChainsByUser,
+		DeclineChain:    declineChainHandler.DeclineChain,
+		ListChains:      chainHandler.ListChains,
+		AuthMiddleware:  middleware.Auth(jwtProvider),
 	})
 	serverErrors := make(chan error, 1)
 	go func() {

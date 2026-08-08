@@ -52,28 +52,6 @@ type stateExpansion struct {
 	chains     []exchange.Chain
 }
 
-// var ChainRequestQuene []ChainRequest = []ChainRequest{}
-const chain_request_queue_size = 100
-
-// Service owns the chain-building queue and its database dependency.
-type Service struct {
-	repository Repository
-	queue      chan ChainRequest
-}
-
-// NewService creates a chain-building service.
-func NewService(repository Repository) *Service {
-	return &Service{
-		repository: repository,
-		queue:      make(chan ChainRequest, chain_request_queue_size),
-	}
-}
-
-// EnqueueChainRequest adds a request to the asynchronous chain-building queue.
-func (s *Service) EnqueueChainRequest(userID, wishedItemID int64) {
-	s.queue <- ChainRequest{UserID: userID, WishedItemId: wishedItemID}
-}
-
 // Entry point for the Chain evaluation process. This function looks over the ChainRequestQuene
 // for the newly arrived ChainRequest structs.
 //

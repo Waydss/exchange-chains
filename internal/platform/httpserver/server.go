@@ -32,14 +32,19 @@ type ReadinessDependencies struct {
 
 // Routes contains the application handlers mounted by the HTTP server.
 type Routes struct {
-	Register       gin.HandlerFunc
-	Login          gin.HandlerFunc
-	Me             gin.HandlerFunc
-	CreateItem     gin.HandlerFunc
-	CreateChain    gin.HandlerFunc
-	DeclineChain   gin.HandlerFunc
-	ListChains     gin.HandlerFunc
-	AuthMiddleware gin.HandlerFunc
+	Register   gin.HandlerFunc
+	Login      gin.HandlerFunc
+	Me         gin.HandlerFunc
+	CreateItem gin.HandlerFunc
+
+	// FIXME Remove this at one point
+	CreateChain gin.HandlerFunc
+
+	GetChainsByItem gin.HandlerFunc
+	GetChainsByUser gin.HandlerFunc
+	DeclineChain    gin.HandlerFunc
+	ListChains      gin.HandlerFunc
+	AuthMiddleware  gin.HandlerFunc
 }
 
 // Server owns the HTTP transport and its lifecycle.
@@ -75,6 +80,8 @@ func New(port string, dependencies ReadinessDependencies, uploadDirectory string
 	protected.GET("/me", routes.Me)
 	protected.POST("/items", routes.CreateItem)
 	protected.POST("/chain", routes.CreateChain)
+	protected.GET("/chains/by-item", routes.GetChainsByItem)
+	protected.GET("/chains/by-user", routes.GetChainsByUser)
 	protected.POST("/chains/:chainId/decline", routes.DeclineChain)
 
 	// Read-only introspection endpoint, public for verification purposes.
