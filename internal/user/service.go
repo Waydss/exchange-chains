@@ -124,6 +124,16 @@ func (s *Service) GetByID(ctx context.Context, userID int64) (PublicUser, error)
 	return toPublicUser(foundUser), nil
 }
 
+// Returns the publicRating and shadowRating for the user, found by provided UserID. These will be used in construction for the userCandidate in chain_builder package
+func (s *Service) GetUserCandidateBase(ctx context.Context, userId int64) (publicRating float64, shadowRating int, err error) {
+	foundUser, err := s.repository.GetByID(ctx, userId)
+	if err != nil {
+		return 0, 0, fmt.Errorf("load user profile: %w", err)
+	}
+
+	return foundUser.PublicRating, foundUser.ShadowRating, nil
+}
+
 func (s *Service) authResult(account User) (AuthResult, error) {
 	accessToken, err := s.tokenProvider.Generate(account.ID, account.Login)
 	if err != nil {

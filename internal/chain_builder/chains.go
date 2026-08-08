@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/L-ka080/DDB-6-case/internal/exchange"
-	"github.com/jackc/pgx/v5"
 )
 
 // errChainScoreTooLow signals a chain that does not pass the final score gate.
@@ -87,32 +86,41 @@ func (s *Service) StartChainRequestWorkers(ctx context.Context) <-chan struct{} 
 // Function for ChainRequest validation. Please make sure to validate the IDs beforehand,
 // so we could return HTTP error about it.
 func (s *Service) handleChainRequest(ctx context.Context, req ChainRequest) {
-	root, err := s.repository.GetAccount(ctx, req.UserID)
+	publicRating, shadowRating, err := s.userRequester.GetUserCandidateBase(ctx, req.UserID)
 
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			log.Println("Chain request skipped: account ID has not been validated")
-			return
-		}
-		log.Println("Chain request skipped: database error")
+		log.Printf("Chain request skipped: %v\n", err)
+		return
+	}
+
+	candidate := userCandidate{
+		ID:           req.UserID,
+		PublicRating: publicRating,
+		ShadowRating: shadowRating,
+	}
+
+	err = s.repository.FillRootCandidate(ctx, &candidate)
+
+	if err != nil {
+		log.Printf("Chain request skipped: %v\n", err)
 		return
 	}
 
 	wishIndex := -1
-	for i := range root.Wishes {
-		if root.Wishes[i].ID == req.WishedItemId {
+	for i := range candidate.Wishes {
+		if candidate.Wishes[i].ID == req.WishedItemId {
 			wishIndex = i
 			break
 		}
 	}
 	if wishIndex < 0 {
-		log.Printf("Chain request skipped: WishedItemID [%d] has not been found for AccountID [%d];", req.WishedItemId, root.ID)
+		log.Printf("Chain request skipped: WishedItemID [%d] has not been found for AccountID [%d];", req.WishedItemId, candidate.ID)
 		return
 	}
 
 	start := time.Now()
-	chains := s.buildClosedChains(ctx, &root, wishIndex)
-	log.Printf("Chain request done: account=%d wish=%d chains=%d in %v", root.ID, req.WishedItemId, len(chains), time.Since(start))
+	chains := s.buildClosedChains(ctx, &candidate, wishIndex)
+	log.Printf("Chain request done: account=%d wish=%d chains=%d in %v", candidate.ID, req.WishedItemId, len(chains), time.Since(start))
 }
 
 // Builds a new Chains for provided Account and Wished Item index.
@@ -127,6 +135,8 @@ func (s *Service) buildClosedChains(ctx context.Context, root *userCandidate, ro
 	if root == nil || rootWishIndex < 0 || rootWishIndex >= len(root.Wishes) {
 		return nil
 	}
+
+	// s.userService.GetByID(ctx, root.ID)
 
 	rootWish := root.Wishes[rootWishIndex]
 	startGive, ok := root.CurrentGive()
@@ -442,7 +452,7 @@ func (s *Service) buildChainFromState(ctx context.Context, root *userCandidate, 
 	score := 0.0
 	for i, barter := range path {
 		score += barter.MatchScore
-		convertedPath[i] = barter.VertexToBarter()
+		convertedPath[i] = barter.EdgeToBarter()
 	}
 
 	newChain := exchange.Chain{

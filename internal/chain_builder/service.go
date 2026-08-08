@@ -11,15 +11,22 @@ const chain_request_queue_size = 100
 
 // Service owns the chain-building queue and its database dependency.
 type Service struct {
-	repository Repository
-	queue      chan ChainRequest
+	repository    Repository
+	queue         chan ChainRequest
+	userRequester UserRequester
+}
+
+type UserRequester interface {
+	// Returns the publicRating and shadowRating for the user, found by provided UserID. These will be used in construction for the userCandidate in chain_builder package
+	GetUserCandidateBase(ctx context.Context, userId int64) (publicRating float64, shadowRating int, err error)
 }
 
 // NewService creates a chain-building service.
-func NewService(repository Repository) *Service {
+func NewService(repository Repository, userService UserRequester) *Service {
 	return &Service{
-		repository: repository,
-		queue:      make(chan ChainRequest, chain_request_queue_size),
+		repository:    repository,
+		queue:         make(chan ChainRequest, chain_request_queue_size),
+		userRequester: userService,
 	}
 }
 

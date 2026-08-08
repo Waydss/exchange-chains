@@ -196,7 +196,7 @@ func newServices(
 
 	userService := user.NewService(repositories.user, security.NewPasswordHasher(), jwtProvider)
 
-	chainService := cb.NewService(repositories.chain)
+	chainService := cb.NewService(repositories.chain, userService)
 	itemService := item.NewService(repositories.item, repositories.category, fileStorage, cfg.Upload.MaxItemPhotos, chainService)
 
 	return services{

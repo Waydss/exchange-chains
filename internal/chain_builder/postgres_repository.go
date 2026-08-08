@@ -24,34 +24,20 @@ func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 
 // MARK: Public functions
 
-// GetAccount returns an account together with all of its wishes and gives.
-func (r *PostgresRepository) GetAccount(ctx context.Context, accountID int64) (userCandidate, error) {
-	const accountQuery = `
-		SELECT id, public_rating, shadow_rating
-		FROM users
-		WHERE id = $1`
-
-	var account userCandidate
-	if err := r.pool.QueryRow(ctx, accountQuery, accountID).Scan(
-		&account.ID,
-		&account.PublicRating,
-		&account.ShadowRating,
-	); err != nil {
-		return userCandidate{}, fmt.Errorf("get account: %w", err)
-	}
-
-	wishes, err := r.getWishes(ctx, []int64{accountID}, nil)
+func (r *PostgresRepository) FillRootCandidate(ctx context.Context, candidateBase *userCandidate) error {
+	wishes, err := r.getWishes(ctx, []int64{candidateBase.ID}, nil)
 	if err != nil {
-		return userCandidate{}, err
+		return err
 	}
-	gives, err := r.getGives(ctx, []int64{accountID})
+	gives, err := r.getGives(ctx, []int64{candidateBase.ID})
 	if err != nil {
-		return userCandidate{}, err
+		return err
 	}
 
-	account.Wishes = wishes[accountID]
-	account.Gives = gives[accountID]
-	return account, nil
+	candidateBase.Wishes = wishes[candidateBase.ID]
+	candidateBase.Gives = gives[candidateBase.ID]
+
+	return nil
 }
 
 // GetAccountGives returns all searching gives of the given account.

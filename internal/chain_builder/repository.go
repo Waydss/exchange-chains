@@ -9,8 +9,8 @@ import (
 // Repository contains the database operations required by the chain builder.
 type Repository interface {
 
-	// Used internally for getting all the necessary information about the Users and their accounts
-	GetAccount(ctx context.Context, accountID int64) (userCandidate, error)
+	// Used internally for getting all the necessary information about the root User
+	FillRootCandidate(ctx context.Context, canidateBase *userCandidate) error
 
 	// Used internally for getting all possible account's Given Items
 	GetAccountGives(ctx context.Context, accountID int64) ([]exchange.GivenItem, error)
@@ -18,10 +18,10 @@ type Repository interface {
 	// Used internally for getting all possible account's Given Items
 	FindCandidateAccounts(ctx context.Context, give exchange.GivenItem, limit int) ([]userCandidate, error)
 
-	// Internal function, just for tests
+	// Used for testing chain_builder handler
 	CreateChain(ctx context.Context, chain exchange.Chain) error
 
-	// Internal function, just for tests
+	// Used for testing chain_builder handler
 	ListChains(ctx context.Context) ([]exchange.Chain, error)
 
 	GetChainsByItem(ctx context.Context, userId int64, wishedItemId int64) ([]exchange.Chain, error)

@@ -30,7 +30,7 @@ type barterEdge struct {
 	CreatedAt  time.Time
 }
 
-func (v barterEdge) VertexToBarter() exchange.Barter {
+func (v barterEdge) EdgeToBarter() exchange.Barter {
 	return exchange.Barter{
 		ID:        v.ID,
 		From:      v.From,

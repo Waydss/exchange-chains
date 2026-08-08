@@ -10,6 +10,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// userServiceStub serves the root ratings needed to assemble a userCandidate
+// straight from the database, mirroring the production user service contract.
+type userServiceStub struct {
+	pool *pgxpool.Pool
+}
+
+func (s userServiceStub) GetUserCandidateBase(ctx context.Context, userID int64) (float64, int, error) {
+	var publicRating float64
+	var shadowRating int
+	err := s.pool.QueryRow(ctx,
+		`SELECT public_rating, shadow_rating FROM users WHERE id = $1`, userID,
+	).Scan(&publicRating, &shadowRating)
+	return publicRating, shadowRating, err
+}
+
 // TestBuildChainOnSeededData seeds a dense dataset and runs a real BFS chain
 // build against it, proving the seed produces matchable data end-to-end.
 func TestBuildChainOnSeededData(t *testing.T) {
@@ -61,6 +76,7 @@ func TestBuildChainOnSeededData(t *testing.T) {
 	t.Logf("seeded users=%d items=%d wishes=%d", seededUsers, seededItems, seededWishes)
 
 	cbRepo := NewPostgresRepository(pool)
+	userSvc := userServiceStub{pool: pool}
 
 	// Probe a handful of roots; the first one that produces a chain wins.
 	rootsChecked := 0
@@ -68,9 +84,18 @@ func TestBuildChainOnSeededData(t *testing.T) {
 	var candidateCount int
 
 	for id := int64(1); id <= 500; id++ {
-		account, err := cbRepo.GetAccount(ctx, id)
+		publicRating, shadowRating, err := userSvc.GetUserCandidateBase(ctx, id)
 		if err != nil {
 			t.Fatalf("get account %d: %v", id, err)
+		}
+
+		account := userCandidate{
+			ID:           id,
+			PublicRating: publicRating,
+			ShadowRating: shadowRating,
+		}
+		if err := cbRepo.FillRootCandidate(ctx, &account); err != nil {
+			t.Fatalf("fill account %d: %v", id, err)
 		}
 		if len(account.Wishes) == 0 || len(account.Gives) == 0 {
 			continue
@@ -85,7 +110,7 @@ func TestBuildChainOnSeededData(t *testing.T) {
 		}
 		candidateCount++
 
-		svc := NewService(cbRepo)
+		svc := NewService(cbRepo, userSvc)
 		for i := range account.Wishes {
 			chains := svc.buildClosedChains(ctx, &account, i)
 			totalChains += len(chains)

@@ -9,7 +9,6 @@ import (
 	"github.com/L-ka080/DDB-6-case/internal/exchange"
 	"github.com/L-ka080/DDB-6-case/internal/platform/httpserver"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
 )
 
 // Handler exposes chain building over HTTP.
@@ -56,18 +55,27 @@ func (h *Handler) CreateChainsForItem(ctx *gin.Context) {
 		return
 	}
 
-	foundAccount, err := h.service.repository.GetAccount(ctx.Request.Context(), request.UserId)
+	publicRating, shadowRating, err := h.service.userRequester.GetUserCandidateBase(ctx.Request.Context(), request.UserId)
+
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httpserver.WriteError(ctx, http.StatusNotFound, "account_not_found", "account not found")
-			return
-		}
+		httpserver.WriteError(ctx, http.StatusNotFound, "not_found", "user account has not been found")
+		return
+	}
+
+	candidate := userCandidate{
+		ID:           request.UserId,
+		PublicRating: publicRating,
+		ShadowRating: shadowRating,
+	}
+	err = h.service.repository.FillRootCandidate(ctx.Request.Context(), &candidate)
+
+	if err != nil {
 		httpserver.WriteError(ctx, http.StatusInternalServerError, "database_error", "could not load account")
 		return
 	}
 
 	wishExists := false
-	for _, wish := range foundAccount.Wishes {
+	for _, wish := range candidate.Wishes {
 		if wish.ID == request.WishedItemId {
 			wishExists = true
 			break
