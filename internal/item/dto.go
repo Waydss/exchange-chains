@@ -13,7 +13,7 @@ type PhotoUpload struct {
 
 // StoredPhoto is file metadata returned by a storage implementation.
 type StoredPhoto struct {
-	URL string
+	ObjectKey string
 }
 
 // CreateInput contains normalized-independent values required to create an item.

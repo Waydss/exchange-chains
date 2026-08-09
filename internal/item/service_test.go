@@ -71,10 +71,10 @@ func (t *fakeTransaction) CreatePhotos(
 	created := make([]item.Photo, len(photos))
 	for index, photo := range photos {
 		created[index] = item.Photo{
-			ID:       int64(501 + index),
-			ItemID:   itemID,
-			URL:      photo.URL,
-			Position: photo.Position,
+			ID:        int64(501 + index),
+			ItemID:    itemID,
+			ObjectKey: photo.ObjectKey,
+			Position:  photo.Position,
 		}
 	}
 
@@ -127,7 +127,7 @@ func (s *fakeStorage) SaveItemPhotos(
 
 	stored := make([]item.StoredPhoto, len(photos))
 	for index := range photos {
-		stored[index] = item.StoredPhoto{URL: "/uploads/items/101/photo-" + string(rune('1'+index)) + ".jpg"}
+		stored[index] = item.StoredPhoto{ObjectKey: "items/101/photo-" + string(rune('1'+index)) + ".jpg"}
 	}
 
 	return stored, nil
@@ -136,6 +136,10 @@ func (s *fakeStorage) SaveItemPhotos(
 func (s *fakeStorage) DeleteItemPhotos(_ context.Context, itemID int64) error {
 	s.deleteID = itemID
 	return nil
+}
+
+func (s *fakeStorage) PublicURL(objectKey string) string {
+	return "/uploads/" + objectKey
 }
 
 func TestCreateWithoutPhotos(t *testing.T) {
@@ -182,6 +186,9 @@ func TestCreateWithMultiplePhotos(t *testing.T) {
 	}
 	if repository.photoParams[0].Position != 0 || repository.photoParams[1].Position != 1 {
 		t.Fatalf("photo positions = %#v", repository.photoParams)
+	}
+	if repository.photoParams[0].ObjectKey == "" || result.Photos[0].URL == "" {
+		t.Fatalf("photo metadata = %#v, response = %#v", repository.photoParams, result.Photos)
 	}
 }
 

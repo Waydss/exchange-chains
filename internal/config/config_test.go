@@ -24,6 +24,15 @@ var configEnvKeys = []string{
 	"UPLOAD_DIR",
 	"MAX_UPLOAD_SIZE",
 	"MAX_ITEM_PHOTOS",
+	"STORAGE_DRIVER",
+	"S3_ENDPOINT",
+	"S3_PUBLIC_URL",
+	"S3_BUCKET",
+	"S3_ACCESS_KEY",
+	"S3_SECRET_KEY",
+	"S3_REGION",
+	"S3_USE_SSL",
+	"S3_ENSURE_BUCKET",
 }
 
 func TestLoadValidConfig(t *testing.T) {
@@ -44,6 +53,15 @@ func TestLoadValidConfig(t *testing.T) {
 		"UPLOAD_DIR":          "/tmp/exchange-uploads",
 		"MAX_UPLOAD_SIZE":     "10485760",
 		"MAX_ITEM_PHOTOS":     "5",
+		"STORAGE_DRIVER":      "s3",
+		"S3_ENDPOINT":         "localhost:9000",
+		"S3_PUBLIC_URL":       "http://localhost:9000/item-photos/",
+		"S3_BUCKET":           "item-photos",
+		"S3_ACCESS_KEY":       "access",
+		"S3_SECRET_KEY":       "secret",
+		"S3_REGION":           "ru-central1",
+		"S3_USE_SSL":          "true",
+		"S3_ENSURE_BUCKET":    "false",
 	})
 
 	got, err := load(false)
@@ -95,6 +113,19 @@ func TestLoadValidConfig(t *testing.T) {
 			got.Upload.MaxItemPhotos,
 		)
 	}
+	if got.Storage.Driver != "s3" {
+		t.Fatalf("Storage.Driver = %q, want s3", got.Storage.Driver)
+	}
+	if got.S3.Endpoint != "localhost:9000" ||
+		got.S3.PublicBaseURL != "http://localhost:9000/item-photos" ||
+		got.S3.Bucket != "item-photos" ||
+		got.S3.AccessKey != "access" ||
+		got.S3.SecretKey != "secret" ||
+		got.S3.Region != "ru-central1" ||
+		!got.S3.UseSSL ||
+		got.S3.EnsureBucket {
+		t.Fatalf("S3 config = %+v", got.S3)
+	}
 }
 
 func TestLoadUsesDefaults(t *testing.T) {
@@ -143,6 +174,19 @@ func TestLoadUsesDefaults(t *testing.T) {
 			got.Upload.MaxFileSize,
 			got.Upload.MaxItemPhotos,
 		)
+	}
+	if got.Storage.Driver != "local" {
+		t.Fatalf("Storage.Driver = %q, want local", got.Storage.Driver)
+	}
+	if got.S3.Endpoint != "minio:9000" ||
+		got.S3.PublicBaseURL != "http://localhost:9000/item-photos" ||
+		got.S3.Bucket != "item-photos" ||
+		got.S3.AccessKey != "minioadmin" ||
+		got.S3.SecretKey != "minioadmin" ||
+		got.S3.Region != "us-east-1" ||
+		got.S3.UseSSL ||
+		!got.S3.EnsureBucket {
+		t.Fatalf("S3 defaults = %+v", got.S3)
 	}
 }
 
@@ -221,6 +265,7 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		{name: "zero max upload size", key: "MAX_UPLOAD_SIZE", value: "0", wantError: "MAX_UPLOAD_SIZE"},
 		{name: "invalid max item photos", key: "MAX_ITEM_PHOTOS", value: "many", wantError: "MAX_ITEM_PHOTOS"},
 		{name: "zero max item photos", key: "MAX_ITEM_PHOTOS", value: "0", wantError: "MAX_ITEM_PHOTOS"},
+		{name: "invalid storage driver", key: "STORAGE_DRIVER", value: "disk", wantError: "STORAGE_DRIVER"},
 		{name: "zero rejected item TTL", key: "REJECTED_ITEM_TTL", value: "0s", wantError: "REJECTED_ITEM_TTL"},
 	}
 
@@ -229,6 +274,39 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 			values := map[string]string{
 				"DATABASE_URL": "postgres://user:password@localhost:5432/exchange",
 				"JWT_SECRET":   "test-secret",
+			}
+			values[tt.key] = tt.value
+			withEnv(t, values)
+
+			_, err := load(false)
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("load config error = %v, want error containing %q", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidS3Values(t *testing.T) {
+	tests := []struct {
+		name      string
+		key       string
+		value     string
+		wantError string
+	}{
+		{name: "blank endpoint", key: "S3_ENDPOINT", value: " ", wantError: "S3_ENDPOINT"},
+		{name: "blank public URL", key: "S3_PUBLIC_URL", value: " ", wantError: "S3_PUBLIC_URL"},
+		{name: "blank bucket", key: "S3_BUCKET", value: " ", wantError: "S3_BUCKET"},
+		{name: "blank access key", key: "S3_ACCESS_KEY", value: " ", wantError: "S3_ACCESS_KEY"},
+		{name: "blank secret key", key: "S3_SECRET_KEY", value: " ", wantError: "S3_SECRET_KEY"},
+		{name: "blank region", key: "S3_REGION", value: " ", wantError: "S3_REGION"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			values := map[string]string{
+				"DATABASE_URL":   "postgres://user:password@localhost:5432/exchange",
+				"JWT_SECRET":     "test-secret",
+				"STORAGE_DRIVER": "s3",
 			}
 			values[tt.key] = tt.value
 			withEnv(t, values)

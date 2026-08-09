@@ -48,7 +48,7 @@ type Item struct {
 type Photo struct {
 	ID        int64
 	ItemID    int64
-	URL       string
+	ObjectKey string
 	Position  int
 	CreatedAt time.Time
 }

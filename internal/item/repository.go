@@ -20,8 +20,8 @@ type CreateItemParams struct {
 
 // CreatePhotoParams contains database fields for a stored photo.
 type CreatePhotoParams struct {
-	URL      string
-	Position int
+	ObjectKey string
+	Position  int
 }
 
 // Transaction contains item writes that must commit atomically.
@@ -44,4 +44,5 @@ type CategoryRepository interface {
 type FileStorage interface {
 	SaveItemPhotos(ctx context.Context, itemID int64, photos []PhotoUpload) ([]StoredPhoto, error)
 	DeleteItemPhotos(ctx context.Context, itemID int64) error
+	PublicURL(objectKey string) string
 }

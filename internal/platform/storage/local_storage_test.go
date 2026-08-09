@@ -28,14 +28,17 @@ func TestLocalStorageSavesMultipleDetectedImageTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveItemPhotos() error = %v", err)
 	}
-	if len(stored) != 2 || !strings.HasSuffix(stored[0].URL, ".jpg") || !strings.HasSuffix(stored[1].URL, ".png") {
+	if len(stored) != 2 || !strings.HasSuffix(stored[0].ObjectKey, ".jpg") || !strings.HasSuffix(stored[1].ObjectKey, ".png") {
 		t.Fatalf("stored photos = %#v", stored)
 	}
 
 	for _, photo := range stored {
-		filename := filepath.Base(photo.URL)
+		filename := filepath.Base(photo.ObjectKey)
 		if _, err := os.Stat(filepath.Join(baseDirectory, "items", "101", filename)); err != nil {
 			t.Fatalf("stored file %q: %v", filename, err)
+		}
+		if got := storage.PublicURL(photo.ObjectKey); !strings.HasPrefix(got, "/uploads/items/101/") {
+			t.Fatalf("PublicURL() = %q, want uploads URL", got)
 		}
 	}
 }

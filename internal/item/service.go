@@ -91,7 +91,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (CreateResponse
 
 		photoParams := make([]CreatePhotoParams, len(storedPhotos))
 		for index, storedPhoto := range storedPhotos {
-			photoParams[index] = CreatePhotoParams{URL: storedPhoto.URL, Position: index}
+			photoParams[index] = CreatePhotoParams{ObjectKey: storedPhoto.ObjectKey, Position: index}
 		}
 
 		createdPhotos, err = transaction.CreatePhotos(ctx, createdItem.ID, photoParams)
@@ -111,7 +111,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (CreateResponse
 		return CreateResponse{}, err
 	}
 
-	return toCreateResponse(createdItem, itemCategory, wantedCategory, createdPhotos), nil
+	return s.toCreateResponse(createdItem, itemCategory, wantedCategory, createdPhotos), nil
 }
 
 func (s *Service) validate(input CreateInput) error {
@@ -157,7 +157,7 @@ func validCondition(condition Condition) bool {
 	}
 }
 
-func toCreateResponse(
+func (s *Service) toCreateResponse(
 	created Item,
 	itemCategory category.Category,
 	wantedCategory category.Category,
@@ -165,7 +165,7 @@ func toCreateResponse(
 ) CreateResponse {
 	photoResponses := make([]PhotoResponse, len(photos))
 	for index, photo := range photos {
-		photoResponses[index] = PhotoResponse{ID: photo.ID, URL: photo.URL}
+		photoResponses[index] = PhotoResponse{ID: photo.ID, URL: s.fileStorage.PublicURL(photo.ObjectKey)}
 	}
 
 	return CreateResponse{

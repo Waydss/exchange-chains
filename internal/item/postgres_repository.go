@@ -103,13 +103,13 @@ func (t *postgresTransaction) CreatePhotos(
 	}
 
 	const query = `
-		INSERT INTO item_photos (item_id, url, position)
+		INSERT INTO item_photos (item_id, object_key, position)
 		VALUES ($1, $2, $3)
-		RETURNING id, item_id, url, position, created_at`
+		RETURNING id, item_id, object_key, position, created_at`
 
 	batch := &pgx.Batch{}
 	for _, photo := range photos {
-		batch.Queue(query, itemID, photo.URL, photo.Position)
+		batch.Queue(query, itemID, photo.ObjectKey, photo.Position)
 	}
 
 	results := t.tx.SendBatch(ctx, batch)
@@ -118,7 +118,7 @@ func (t *postgresTransaction) CreatePhotos(
 		if err := results.QueryRow().Scan(
 			&created.ID,
 			&created.ItemID,
-			&created.URL,
+			&created.ObjectKey,
 			&created.Position,
 			&created.CreatedAt,
 		); err != nil {
