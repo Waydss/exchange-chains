@@ -110,7 +110,7 @@ func TestBuildChainOnSeededData(t *testing.T) {
 		}
 		candidateCount++
 
-		svc := NewService(cbRepo, userSvc)
+		svc := NewService(cbRepo, userSvc, nil)
 		for i := range account.Wishes {
 			chains := svc.buildClosedChains(ctx, &account, i)
 			totalChains += len(chains)

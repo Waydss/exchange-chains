@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/L-ka080/DDB-6-case/internal/exchange"
+	"github.com/L-ka080/DDB-6-case/internal/item"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -60,11 +62,19 @@ func (r *PostgresRepository) FindCandidateAccounts(ctx context.Context, give exc
 		  AND w.price_max >= $3
 		  AND EXISTS (
 			SELECT 1 FROM items AS gi
-			WHERE gi.user_id = a.id AND gi.status = 'searching'
+			WHERE gi.user_id = a.id AND gi.status = $4
 		  )
-		LIMIT $4`
+		LIMIT $5`
 
-	rows, err := r.pool.Query(ctx, query, give.CategoryID, give.PriceMin, give.PriceMax, limit)
+	rows, err := r.pool.Query(
+		ctx,
+		query,
+		give.CategoryID,
+		give.PriceMin,
+		give.PriceMax,
+		item.StatusSearching,
+		limit,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("find candidate accounts: %w", err)
 	}
@@ -124,12 +134,20 @@ func (r *PostgresRepository) CreateChain(ctx context.Context, chain exchange.Cha
 
 	const chainQuery = `
 		INSERT INTO chains (root_user_id, root_wish_id, signature, score, status)
-		VALUES ($1, $2, $3, $4, 'matched')
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (signature) DO NOTHING
 		RETURNING id`
 
 	var chainID int64
-	err = tx.QueryRow(ctx, chainQuery, chain.RootID, chain.RootWish.ID, chain.Signature, chain.Score).Scan(&chainID)
+	err = tx.QueryRow(
+		ctx,
+		chainQuery,
+		chain.RootID,
+		chain.RootWish.ID,
+		chain.Signature,
+		chain.Score,
+		exchange.StatusMatched,
+	).Scan(&chainID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
@@ -198,11 +216,64 @@ func (r *PostgresRepository) AcceptChain(ctx context.Context, chainId, userId in
 	return exchange.Chain{}, errors.New("[cb/repository] Not implemented")
 }
 
-// TODO implement this
+// DeclineChain marks the current participant as declined and cancels the chain.
+func (r *PostgresRepository) DeclineChain(ctx context.Context, chainID, userID int64) (exchange.Chain, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return exchange.Chain{}, fmt.Errorf("begin decline chain transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
-func (r *PostgresRepository) DeclineChain(ctx context.Context, chainId, userId int64) (exchange.Chain, error) {
+	const participantQuery = `
+		UPDATE chain_participants
+		SET status = $1,
+		    declined_at = NOW(),
+		    updated_at = NOW()
+		WHERE chain_id = $2 AND user_id = $3`
 
-	return exchange.Chain{}, errors.New("[cb/repository] Not implemented")
+	result, err := tx.Exec(ctx, participantQuery, exchange.ParticipantDeclined, chainID, userID)
+	if err != nil {
+		return exchange.Chain{}, fmt.Errorf("decline chain participant: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return exchange.Chain{}, fmt.Errorf("decline chain: user %d is not a participant of chain %d", userID, chainID)
+	}
+
+	const cancelReasonParticipantDeclined = "participant_declined"
+	const chainQuery = `
+		UPDATE chains
+		SET status = $1,
+		    cancelled_at = NOW(),
+		    cancelled_by_user_id = $2,
+		    cancel_reason = $3
+		WHERE id = $4
+		RETURNING cancelled_at`
+
+	var cancelledAt time.Time
+	if err := tx.QueryRow(
+		ctx,
+		chainQuery,
+		exchange.StatusCancelled,
+		userID,
+		cancelReasonParticipantDeclined,
+		chainID,
+	).Scan(&cancelledAt); err != nil {
+		return exchange.Chain{}, fmt.Errorf("cancel chain: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return exchange.Chain{}, fmt.Errorf("commit decline chain transaction: %w", err)
+	}
+
+	return exchange.Chain{
+		ID:                chainID,
+		Status:            exchange.StatusCancelled,
+		CancelledAt:       &cancelledAt,
+		CancelledByUserID: &userID,
+		CancelReason:      cancelReasonParticipantDeclined,
+	}, nil
 }
 
 // MARK: Private functions
@@ -320,10 +391,10 @@ func (r *PostgresRepository) getGives(ctx context.Context, accountIDs []int64) (
 		SELECT id, user_id, title, category_id, price_min, price_max, status, created_at, updated_at
 		FROM items
 		WHERE user_id = ANY($1)
-		  AND status = 'searching'
+		  AND status = $2
 		ORDER BY updated_at`
 
-	rows, err := r.pool.Query(ctx, query, accountIDs)
+	rows, err := r.pool.Query(ctx, query, accountIDs, item.StatusSearching)
 	if err != nil {
 		return nil, fmt.Errorf("get account gives: %w", err)
 	}
@@ -346,7 +417,7 @@ func (r *PostgresRepository) getGives(ctx context.Context, accountIDs []int64) (
 		); err != nil {
 			return nil, fmt.Errorf("scan account give: %w", err)
 		}
-		give.Status = "searching"
+		give.Status = item.Status(status)
 		result[give.UserID] = append(result[give.UserID], give)
 	}
 	if err := rows.Err(); err != nil {
@@ -468,7 +539,7 @@ func (r *PostgresRepository) getChains(ctx context.Context, where string, args .
 		}
 		barter.Give.ID = giveID
 		barter.Wish.ID = wishID
-		barter.Give.Status = "searching"
+		barter.Give.Status = item.Status(giveStatus)
 		barter.Status = exchange.BarterStatus(status)
 		idx, ok := chainIndex[chainID]
 		if !ok {

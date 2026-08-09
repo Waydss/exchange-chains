@@ -3,17 +3,19 @@ package cb
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/L-ka080/DDB-6-case/internal/exchange"
 )
 
 const chain_request_queue_size = 100
 
-// Service owns the chain-building queue and its database dependency.
+// Service owns chain operations and their PostgreSQL and Redis dependencies.
 type Service struct {
-	repository    Repository
-	queue         chan ChainRequest
-	userRequester UserRequester
+	repository     Repository
+	rejectionStore RejectionWriter
+	queue          chan ChainRequest
+	userRequester  UserRequester
 }
 
 type UserRequester interface {
@@ -22,11 +24,12 @@ type UserRequester interface {
 }
 
 // NewService creates a chain-building service.
-func NewService(repository Repository, userService UserRequester) *Service {
+func NewService(repository Repository, userService UserRequester, rejectionStore RejectionWriter) *Service {
 	return &Service{
-		repository:    repository,
-		queue:         make(chan ChainRequest, chain_request_queue_size),
-		userRequester: userService,
+		repository:     repository,
+		rejectionStore: rejectionStore,
+		queue:          make(chan ChainRequest, chain_request_queue_size),
+		userRequester:  userService,
 	}
 }
 
@@ -50,9 +53,27 @@ func (s *Service) AcceptChain(ctx context.Context, chainId, userId int64) (excha
 	return exchange.Chain{}, errors.New("[cb/service] Not implemented")
 }
 
-// TODO implement this
+// DeclineChain cancels a chain in PostgreSQL and records the rejected item in Redis.
+func (s *Service) DeclineChain(ctx context.Context, chainID, userID, receivedItemID int64) error {
+	if err := validatePositive("chain_id", chainID); err != nil {
+		return err
+	}
+	if err := validatePositive("user_id", userID); err != nil {
+		return err
+	}
+	if err := validatePositive("received_item_id", receivedItemID); err != nil {
+		return err
+	}
+	if s.rejectionStore == nil {
+		return errors.New("[cb/service] rejection store is not configured")
+	}
+	if _, err := s.repository.DeclineChain(ctx, chainID, userID); err != nil {
+		return fmt.Errorf("decline chain in PostgreSQL: %w", err)
+	}
 
-func (s *Service) DeclineChain(ctx context.Context, chainId, userId int64) (exchange.Chain, error) {
+	if err := s.rejectionStore.Reject(ctx, userID, receivedItemID); err != nil {
+		return fmt.Errorf("record rejected received item: %w", err)
+	}
 
-	return exchange.Chain{}, errors.New("[cb/service] Not implemented")
+	return nil
 }

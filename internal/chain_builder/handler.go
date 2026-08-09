@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/L-ka080/DDB-6-case/internal/exchange"
 	"github.com/L-ka080/DDB-6-case/internal/platform/httpserver"
+	"github.com/L-ka080/DDB-6-case/internal/platform/httpserver/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -231,6 +234,63 @@ func (h *Handler) AcceptChain(ctx *gin.Context) {
 	httpserver.WriteError(ctx, http.StatusInternalServerError, "not_implemented", "not implemented")
 
 	// h.service.AcceptChain(ctx, )
+}
+
+// DeclineChain godoc
+//
+// @Summary Отказ от цепочки обмена
+// @Description Отмечает текущего пользователя как отказавшегося, отменяет цепочку в PostgreSQL и временно сохраняет отклонённый товар в Redis.
+// @Tags chains
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param chainId path integer true "ID цепочки"
+// @Param request body DeclineChainRequest true "Получаемый товар, вызвавший отказ"
+// @Success 200 {object} DeclineChainResponse
+// @Failure 400 {object} httpserver.ErrorResponse
+// @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 500 {object} httpserver.ErrorResponse
+// @Router /api/v1/chains/{chainId}/decline [post]
+func (h *Handler) DeclineChain(ctx *gin.Context) {
+	userIDValue, ok := ctx.Get(middleware.UserIDContextKey)
+	userID, validUserID := userIDValue.(int64)
+	if !ok || !validUserID || userID <= 0 {
+		httpserver.WriteError(ctx, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	chainID, err := strconv.ParseInt(ctx.Param("chainId"), 10, 64)
+	if err != nil || chainID <= 0 {
+		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "chainId must be a positive integer")
+		return
+	}
+
+	var request DeclineChainRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "request body must be valid JSON")
+		return
+	}
+	if request.ReceivedItemID <= 0 {
+		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "received_item_id must be positive")
+		return
+	}
+
+	if err := h.service.DeclineChain(ctx.Request.Context(), chainID, userID, request.ReceivedItemID); err != nil {
+		var validationError *ValidationError
+		if errors.As(err, &validationError) {
+			httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", validationError.Error())
+			return
+		}
+		log.Printf("decline chain request failed: %v", err)
+		httpserver.WriteError(ctx, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
+
+	ctx.JSON(http.StatusOK, DeclineChainResponse{
+		ChainID:        chainID,
+		ReceivedItemID: request.ReceivedItemID,
+		Status:         rejectionRecordedStatus,
+	})
 }
 
 func (h *Handler) DiscardChain(ctx *gin.Context) {

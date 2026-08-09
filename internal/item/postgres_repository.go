@@ -55,7 +55,7 @@ func (t *postgresTransaction) CreateItem(ctx context.Context, params CreateItemP
 			wanted_category_id,
 			status
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'searching')
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, user_id, title, description, condition, category_id,
 			price_min, price_max, wanted_category_id, status, created_at, updated_at`
 
@@ -71,6 +71,7 @@ func (t *postgresTransaction) CreateItem(ctx context.Context, params CreateItemP
 		params.PriceMin,
 		params.PriceMax,
 		params.WantedCategoryID,
+		StatusSearching,
 	).Scan(
 		&created.ID,
 		&created.UserID,
