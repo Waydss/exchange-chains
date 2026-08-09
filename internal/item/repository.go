@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/L-ka080/DDB-6-case/internal/category"
+	"github.com/L-ka080/DDB-6-case/internal/wish"
 )
 
 // CreateItemParams contains database fields for a new item.
@@ -24,15 +25,35 @@ type CreatePhotoParams struct {
 	Position int
 }
 
+// CreateWishParams contains database fields for a wanted item.
+type CreateWishParams struct {
+	UserID        int64
+	CategoryID    int64
+	PriceMin      int64
+	PriceMax      int64
+	TitleKeywords string
+}
+
+// Details contains an item together with the data needed by read endpoints.
+type Details struct {
+	Item           Item
+	Category       category.Category
+	WantedCategory category.Category
+	Photos         []Photo
+}
+
 // Transaction contains item writes that must commit atomically.
 type Transaction interface {
 	CreateItem(ctx context.Context, params CreateItemParams) (Item, error)
 	CreatePhotos(ctx context.Context, itemID int64, photos []CreatePhotoParams) ([]Photo, error)
+	CreateWish(ctx context.Context, params CreateWishParams) (wish.WishedItem, error)
 }
 
 // Repository coordinates transactional item persistence.
 type Repository interface {
 	WithinTransaction(ctx context.Context, fn func(Transaction) error) error
+	ListByUserID(ctx context.Context, userID int64) ([]Details, error)
+	GetByID(ctx context.Context, itemID int64) (Details, error)
 }
 
 // CategoryRepository is the category lookup capability required by the service.

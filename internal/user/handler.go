@@ -16,6 +16,8 @@ type HandlerService interface {
 	Register(ctx context.Context, input RegisterInput) (AuthResult, error)
 	Login(ctx context.Context, input LoginInput) (AuthResult, error)
 	GetByID(ctx context.Context, userID int64) (PublicUser, error)
+	GetUserRatings(ctx context.Context, userId int64) (UserRatingsDTO, error)
+	UpdatePublicRating(ctx context.Context, fromId int64, toId int64, rating float64, barterId int64) (TotalUserRatingDTO, error)
 }
 
 // Handler exposes user authentication and profile use cases over HTTP.
@@ -120,6 +122,83 @@ func (h *Handler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, publicUser)
 }
 
+// UpdatePublicRating godoc
+//
+// @Summary Создание записи о выставлении рейтинга от одного пользователя к другому
+// @Description Записывает оценку текущего пользователя для другого участника закрытого бартера и обновляет средний публичный рейтинг получателя. Каждый участник бартера может оценить другого только один раз.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body UserRatingRequest true "Оценка пользователя и идентификатор бартера"
+// @Success 201 {object} TotalUserRatingDTO
+// @Failure 400 {object} httpserver.ErrorResponse
+// @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 404 {object} httpserver.ErrorResponse
+// @Failure 409 {object} httpserver.ErrorResponse
+// @Failure 500 {object} httpserver.ErrorResponse
+// @Router /api/v1/ratings [post]
+func (h *Handler) UpdatePublicRating(c *gin.Context) {
+	fromId, ok := c.Get(middleware.UserIDContextKey)
+	if !ok {
+		httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	id, ok := fromId.(int64)
+	if !ok || id <= 0 {
+		httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	var request UserRatingRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		httpserver.WriteError(c, http.StatusBadRequest, "validation_error", "request body must be valid JSON")
+		return
+	}
+
+	result, err := h.service.UpdatePublicRating(c.Request.Context(), id, request.ToUser, request.Rating, request.BarterId)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, result)
+}
+
+// GetUserRatings godoc
+//
+// @Summary Получение рейтинга и истории оценок текущего пользователя
+// @Description Возвращает средний рейтинг, количество оценок и все записи, где пользователь является получателем оценки.
+// @Tags users
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} UserRatingsDTO
+// @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 500 {object} httpserver.ErrorResponse
+// @Router /api/v1/ratings [get]
+func (h *Handler) GetUserRatings(c *gin.Context) {
+	userID, ok := c.Get(middleware.UserIDContextKey)
+	if !ok {
+		httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	id, ok := userID.(int64)
+	if !ok || id <= 0 {
+		httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	result, err := h.service.GetUserRatings(c.Request.Context(), id)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
 func handleServiceError(c *gin.Context, err error) {
 	var validationError *ValidationError
 	switch {
@@ -131,6 +210,12 @@ func handleServiceError(c *gin.Context, err error) {
 		httpserver.WriteError(c, http.StatusNotFound, "user_not_found", "user not found")
 	case errors.Is(err, ErrLoginAlreadyExists):
 		httpserver.WriteError(c, http.StatusConflict, "login_already_exists", "login is already taken")
+	case errors.Is(err, ErrBarterNotFound):
+		httpserver.WriteError(c, http.StatusNotFound, "barter_not_found", "barter not found")
+	case errors.Is(err, ErrBarterUsersMismatch):
+		httpserver.WriteError(c, http.StatusBadRequest, "barter_users_mismatch", "users do not belong to the barter")
+	case errors.Is(err, ErrRatingAlreadyExists):
+		httpserver.WriteError(c, http.StatusConflict, "rating_already_exists", "rating already exists")
 	default:
 		log.Printf("user request failed: %v", err)
 		httpserver.WriteError(c, http.StatusInternalServerError, "internal_error", "internal server error")

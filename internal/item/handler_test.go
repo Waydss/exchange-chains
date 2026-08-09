@@ -14,9 +14,13 @@ import (
 )
 
 type handlerServiceStub struct {
-	result CreateResponse
-	err    error
-	input  CreateInput
+	result       CreateResponse
+	listResult   []ReadResponse
+	getResult    ReadResponse
+	err          error
+	input        CreateInput
+	listedUserID int64
+	requestedID  int64
 }
 
 func (s *handlerServiceStub) Create(_ context.Context, input CreateInput) (CreateResponse, error) {
@@ -24,19 +28,30 @@ func (s *handlerServiceStub) Create(_ context.Context, input CreateInput) (Creat
 	return s.result, s.err
 }
 
+func (s *handlerServiceStub) ListByUserID(_ context.Context, userID int64) ([]ReadResponse, error) {
+	s.listedUserID = userID
+	return s.listResult, s.err
+}
+
+func (s *handlerServiceStub) GetByID(_ context.Context, itemID int64) (ReadResponse, error) {
+	s.requestedID = itemID
+	return s.getResult, s.err
+}
+
 func TestCreateHandlerUsesAuthenticatedUserID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &handlerServiceStub{result: CreateResponse{ID: 101, Photos: []PhotoResponse{}}}
 	handler := NewHandler(service, 10<<20, 5)
 	body, contentType := multipartBody(t, map[string]string{
-		"title":                "Гитара Yamaha",
-		"description":          "Исправна",
-		"condition":            "good",
-		"category_name":        "Гитары",
-		"price_min":            "40000",
-		"price_max":            "50000",
-		"wanted_category_name": "Палатки",
-		"user_id":              "999",
+		"title":                 "Гитара Yamaha",
+		"description":           "Исправна",
+		"condition":             "good",
+		"category_name":         "Гитары",
+		"price_min":             "40000",
+		"price_max":             "50000",
+		"wanted_category_name":  "Палатки",
+		"wanted_title_keywords": "Палатка туристическая",
+		"user_id":               "999",
 	}, 0)
 
 	router := gin.New()
@@ -62,12 +77,13 @@ func TestCreateHandlerRejectsMoreThanFivePhotos(t *testing.T) {
 	service := &handlerServiceStub{}
 	handler := NewHandler(service, 10<<20, 5)
 	body, contentType := multipartBody(t, map[string]string{
-		"title":                "Гитара Yamaha",
-		"condition":            "good",
-		"category_name":        "Гитары",
-		"price_min":            "40000",
-		"price_max":            "50000",
-		"wanted_category_name": "Палатки",
+		"title":                 "Гитара Yamaha",
+		"condition":             "good",
+		"category_name":         "Гитары",
+		"price_min":             "40000",
+		"price_max":             "50000",
+		"wanted_category_name":  "Палатки",
+		"wanted_title_keywords": "Палатка туристическая",
 	}, 6)
 
 	router := gin.New()
@@ -99,6 +115,48 @@ func TestCreateHandlerRejectsMissingJWTContext(t *testing.T) {
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestListHandlerUsesAuthenticatedUserID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &handlerServiceStub{listResult: []ReadResponse{}}
+	handler := NewHandler(service, 10<<20, 5)
+	router := gin.New()
+	router.GET("/items", func(c *gin.Context) {
+		c.Set(middleware.UserIDContextKey, int64(42))
+		handler.List(c)
+	})
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/items", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if service.listedUserID != 42 {
+		t.Fatalf("listed user ID = %d, want 42", service.listedUserID)
+	}
+}
+
+func TestGetByIDHandlerUsesPathID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &handlerServiceStub{getResult: ReadResponse{ID: 101}}
+	handler := NewHandler(service, 10<<20, 5)
+	router := gin.New()
+	router.GET("/items/:itemId", func(c *gin.Context) {
+		c.Set(middleware.UserIDContextKey, int64(42))
+		handler.GetByID(c)
+	})
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/items/101", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if service.requestedID != 101 {
+		t.Fatalf("requested item ID = %d, want 101", service.requestedID)
 	}
 }
 

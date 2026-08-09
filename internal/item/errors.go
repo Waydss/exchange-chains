@@ -3,6 +3,8 @@ package item
 import "errors"
 
 var (
+	// ErrNotFound indicates that an item does not exist.
+	ErrNotFound = errors.New("item not found")
 	// ErrCategoryNotFound indicates that the offered category does not exist.
 	ErrCategoryNotFound = errors.New("category not found")
 	// ErrWantedCategoryNotFound indicates that the requested category does not exist.

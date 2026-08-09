@@ -10,6 +10,7 @@ import (
 
 	"github.com/L-ka080/DDB-6-case/internal/category"
 	"github.com/L-ka080/DDB-6-case/internal/item"
+	"github.com/L-ka080/DDB-6-case/internal/wish"
 )
 
 var errRepository = errors.New("repository unavailable")
@@ -20,7 +21,11 @@ type fakeRepository struct {
 	photoError       error
 	createParams     item.CreateItemParams
 	photoParams      []item.CreatePhotoParams
+	wishParams       item.CreateWishParams
 	committed        bool
+	listResult       []item.Details
+	getResult        item.Details
+	readError        error
 }
 
 func (r *fakeRepository) WithinTransaction(_ context.Context, fn func(item.Transaction) error) error {
@@ -31,6 +36,14 @@ func (r *fakeRepository) WithinTransaction(_ context.Context, fn func(item.Trans
 	err := fn(&fakeTransaction{repository: r})
 	r.committed = err == nil
 	return err
+}
+
+func (r *fakeRepository) ListByUserID(_ context.Context, _ int64) ([]item.Details, error) {
+	return r.listResult, r.readError
+}
+
+func (r *fakeRepository) GetByID(_ context.Context, _ int64) (item.Details, error) {
+	return r.getResult, r.readError
 }
 
 type fakeTransaction struct {
@@ -79,6 +92,21 @@ func (t *fakeTransaction) CreatePhotos(
 	}
 
 	return created, nil
+}
+
+func (t *fakeTransaction) CreateWish(
+	_ context.Context,
+	params item.CreateWishParams,
+) (wish.WishedItem, error) {
+	t.repository.wishParams = params
+	return wish.WishedItem{
+		ID:            205,
+		UserID:        params.UserID,
+		CategoryID:    params.CategoryID,
+		PriceMin:      params.PriceMin,
+		PriceMax:      params.PriceMax,
+		TitleKeywords: params.TitleKeywords,
+	}, nil
 }
 
 type fakeCategoryRepository struct {
@@ -138,10 +166,14 @@ func (s *fakeStorage) DeleteItemPhotos(_ context.Context, itemID int64) error {
 	return nil
 }
 
+type fakeChainEnqueer struct{}
+
+func (fce fakeChainEnqueer) EnqueueChainRequest(userId, wishedItemID int64) {}
+
 func TestCreateWithoutPhotos(t *testing.T) {
 	repository := &fakeRepository{}
 	storage := &fakeStorage{}
-	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5)
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
 
 	result, err := service.Create(context.Background(), validCreateInput())
 	if err != nil {
@@ -165,7 +197,7 @@ func TestCreateWithoutPhotos(t *testing.T) {
 func TestCreateWithMultiplePhotos(t *testing.T) {
 	repository := &fakeRepository{}
 	storage := &fakeStorage{}
-	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5)
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
 	input := validCreateInput()
 	input.Photos = []item.PhotoUpload{
 		{Reader: bytes.NewReader([]byte("photo-1")), Size: 7},
@@ -209,7 +241,7 @@ func TestCreateRejectsUnknownCategories(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := item.NewService(&fakeRepository{}, newFakeCategoryRepository(), &fakeStorage{}, 5)
+			service := item.NewService(&fakeRepository{}, newFakeCategoryRepository(), &fakeStorage{}, 5, fakeChainEnqueer{})
 			input := validCreateInput()
 			tt.configure(&input)
 
@@ -251,7 +283,7 @@ func TestCreateRejectsInvalidFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := item.NewService(&fakeRepository{}, newFakeCategoryRepository(), &fakeStorage{}, 5)
+			service := item.NewService(&fakeRepository{}, newFakeCategoryRepository(), &fakeStorage{}, 5, fakeChainEnqueer{})
 			input := validCreateInput()
 			tt.configure(&input)
 
@@ -276,7 +308,7 @@ func TestCreateReturnsStorageErrorsAndCleansFiles(t *testing.T) {
 		t.Run(storageError.Error(), func(t *testing.T) {
 			repository := &fakeRepository{}
 			storage := &fakeStorage{error: storageError}
-			service := item.NewService(repository, newFakeCategoryRepository(), storage, 5)
+			service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
 
 			_, err := service.Create(context.Background(), validCreateInput())
 			if !errors.Is(err, storageError) {
@@ -291,7 +323,7 @@ func TestCreateReturnsStorageErrorsAndCleansFiles(t *testing.T) {
 
 func TestCreateReturnsRepositoryError(t *testing.T) {
 	repository := &fakeRepository{transactionError: errRepository}
-	service := item.NewService(repository, newFakeCategoryRepository(), &fakeStorage{}, 5)
+	service := item.NewService(repository, newFakeCategoryRepository(), &fakeStorage{}, 5, fakeChainEnqueer{})
 
 	_, err := service.Create(context.Background(), validCreateInput())
 	if !errors.Is(err, errRepository) {
@@ -302,7 +334,7 @@ func TestCreateReturnsRepositoryError(t *testing.T) {
 func TestCreateCleansFilesWhenPhotoMetadataFails(t *testing.T) {
 	repository := &fakeRepository{photoError: errRepository}
 	storage := &fakeStorage{}
-	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5)
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
 	input := validCreateInput()
 	input.Photos = []item.PhotoUpload{{Reader: bytes.NewReader([]byte("photo")), Size: 5}}
 
@@ -317,13 +349,14 @@ func TestCreateCleansFilesWhenPhotoMetadataFails(t *testing.T) {
 
 func validCreateInput() item.CreateInput {
 	return item.CreateInput{
-		UserID:             42,
-		Title:              "  Гитара Yamaha F310, 6 струн  ",
-		Description:        "  Исправна  ",
-		Condition:          "good",
-		CategoryName:       " Гитары ",
-		PriceMin:           40000,
-		PriceMax:           50000,
-		WantedCategoryName: " Палатки ",
+		UserID:              42,
+		Title:               "  Гитара Yamaha F310, 6 струн  ",
+		Description:         "  Исправна  ",
+		Condition:           "good",
+		CategoryName:        " Гитары ",
+		PriceMin:            40000,
+		PriceMax:            50000,
+		WantedCategoryName:  " Палатки ",
+		WantedTitleKeywords: " Палатка туристическая ",
 	}
 }

@@ -1,5 +1,168 @@
 basePath: /
 definitions:
+  cb.AcceptChainResponse:
+    properties:
+      chain_id:
+        example: 77
+        type: integer
+      chain_status:
+        allOf:
+        - $ref: '#/definitions/exchange.Status'
+        example: pending
+      participant_status:
+        allOf:
+        - $ref: '#/definitions/exchange.ParticipantStatus'
+        example: accepted
+    type: object
+  cb.BarterReadDTO:
+    properties:
+      from_user_id:
+        type: integer
+      give:
+        $ref: '#/definitions/cb.GiveReadDTO'
+      id:
+        type: integer
+      position:
+        type: integer
+      status:
+        type: string
+      to_user_id:
+        type: integer
+      wish:
+        $ref: '#/definitions/cb.WishReadDTO'
+    type: object
+  cb.ChainParticipantReadDTO:
+    properties:
+      accepted_at:
+        type: string
+      declined_at:
+        type: string
+      status:
+        $ref: '#/definitions/exchange.ParticipantStatus'
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  cb.ChainReadDTO:
+    properties:
+      barters:
+        items:
+          $ref: '#/definitions/cb.BarterReadDTO'
+        type: array
+      cancel_reason:
+        type: string
+      cancelled_at:
+        type: string
+      cancelled_by_user_id:
+        type: integer
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: integer
+      locked_at:
+        type: string
+      participants:
+        items:
+          $ref: '#/definitions/cb.ChainParticipantReadDTO'
+        type: array
+      root_id:
+        type: integer
+      root_wish:
+        $ref: '#/definitions/cb.WishReadDTO'
+      score:
+        type: number
+      signature:
+        type: string
+      status:
+        type: string
+    type: object
+  cb.DeclineChainResponse:
+    properties:
+      chain_id:
+        example: 77
+        type: integer
+      received_item_id:
+        example: 205
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/exchange.Status'
+        example: cancelled
+    type: object
+  cb.GiveReadDTO:
+    properties:
+      category_id:
+        type: integer
+      id:
+        type: integer
+      price_max:
+        type: integer
+      price_min:
+        type: integer
+      status:
+        type: string
+      title:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  cb.ListChainsResponse:
+    properties:
+      chains:
+        items:
+          $ref: '#/definitions/cb.ChainReadDTO'
+        type: array
+    type: object
+  cb.WishReadDTO:
+    properties:
+      category_id:
+        type: integer
+      id:
+        type: integer
+      price_max:
+        type: integer
+      price_min:
+        type: integer
+      title_keywords:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  exchange.ParticipantStatus:
+    enum:
+    - pending
+    - accepted
+    - declined
+    - expired
+    type: string
+    x-enum-varnames:
+    - ParticipantPending
+    - ParticipantAccepted
+    - ParticipantDeclined
+    - ParticipantExpired
+  exchange.Status:
+    enum:
+    - matched
+    - pending
+    - locked
+    - in_delivery
+    - completed
+    - cancelled
+    - disputed
+    type: string
+    x-enum-varnames:
+    - StatusMatched
+    - StatusPending
+    - StatusLocked
+    - StatusInDelivery
+    - StatusCompleted
+    - StatusCancelled
+    - StatusDisputed
   httpserver.ErrorDetail:
     properties:
       code:
@@ -13,18 +176,6 @@ definitions:
     properties:
       error:
         $ref: '#/definitions/httpserver.ErrorDetail'
-    type: object
-  httpserver.HealthResponse:
-    properties:
-      status:
-        example: ok
-        type: string
-    type: object
-  httpserver.ReadinessResponse:
-    properties:
-      status:
-        example: ready
-        type: string
     type: object
   item.CategoryResponse:
     properties:
@@ -85,6 +236,15 @@ definitions:
         type: string
       wanted_category:
         $ref: '#/definitions/item.CategoryResponse'
+      wish:
+        $ref: '#/definitions/item.WishResponse'
+    type: object
+  item.ListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/item.ReadResponse'
+        type: array
     type: object
   item.PhotoResponse:
     properties:
@@ -95,18 +255,82 @@ definitions:
         example: /uploads/items/101/7d9f03c7.webp
         type: string
     type: object
+  item.ReadResponse:
+    properties:
+      category:
+        $ref: '#/definitions/item.CategoryResponse'
+      condition:
+        allOf:
+        - $ref: '#/definitions/item.Condition'
+        example: good
+      created_at:
+        example: "2026-08-05T15:00:00Z"
+        type: string
+      description:
+        example: Исправна, есть небольшие царапины
+        type: string
+      id:
+        example: 101
+        type: integer
+      photos:
+        items:
+          $ref: '#/definitions/item.PhotoResponse'
+        type: array
+      price_max:
+        example: 50000
+        type: integer
+      price_min:
+        example: 40000
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/item.Status'
+        example: searching
+      title:
+        example: Гитара Yamaha F310, 6 струн
+        type: string
+      updated_at:
+        example: "2026-08-05T15:00:00Z"
+        type: string
+      user_id:
+        example: 6
+        type: integer
+      wanted_category:
+        $ref: '#/definitions/item.CategoryResponse'
+    type: object
   item.Status:
     enum:
     - searching
     - in_chain
+    - reserved
+    - in_transit
     - exchanged
     - archived
     type: string
     x-enum-varnames:
     - StatusSearching
     - StatusInChain
+    - StatusReserved
+    - StatusInTransit
     - StatusExchanged
     - StatusArchived
+  item.WishResponse:
+    properties:
+      category:
+        $ref: '#/definitions/item.CategoryResponse'
+      id:
+        example: 205
+        type: integer
+      price_max:
+        example: 50000
+        type: integer
+      price_min:
+        example: 40000
+        type: integer
+      title_keywords:
+        example: Палатка туристическая
+        type: string
+    type: object
   user.AuthResult:
     properties:
       access_token:
@@ -172,12 +396,97 @@ definitions:
     - name
     - password
     type: object
+  user.TotalUserRatingDTO:
+    properties:
+      total_scores:
+        type: integer
+      user_rating:
+        type: number
+    type: object
+  user.UserRatingEntry:
+    properties:
+      barter_id:
+        type: integer
+      public_rating:
+        type: number
+      public_user:
+        $ref: '#/definitions/user.PublicUser'
+    type: object
+  user.UserRatingRequest:
+    properties:
+      barter_id:
+        example: 1
+        type: integer
+      rating:
+        example: 5
+        type: number
+      to_user:
+        example: 2
+        type: integer
+    required:
+    - barter_id
+    - rating
+    - to_user
+    type: object
+  user.UserRatingsDTO:
+    properties:
+      ratings:
+        items:
+          $ref: '#/definitions/user.UserRatingEntry'
+        type: array
+      total_scores:
+        type: integer
+      user_rating:
+        type: number
+    type: object
+  wish.CategoryResponse:
+    properties:
+      id:
+        example: 3
+        type: integer
+      name:
+        example: Палатки
+        type: string
+    type: object
+  wish.ListResponse:
+    properties:
+      wishes:
+        items:
+          $ref: '#/definitions/wish.ReadResponse'
+        type: array
+    type: object
+  wish.ReadResponse:
+    properties:
+      category:
+        $ref: '#/definitions/wish.CategoryResponse'
+      created_at:
+        example: "2026-08-05T15:00:00Z"
+        type: string
+      id:
+        example: 205
+        type: integer
+      price_max:
+        example: 50000
+        type: integer
+      price_min:
+        example: 40000
+        type: integer
+      title_keywords:
+        example: Палатка туристическая
+        type: string
+      updated_at:
+        example: "2026-08-05T15:00:00Z"
+        type: string
+      user_id:
+        example: 6
+        type: integer
+    type: object
 host: localhost:8080
 info:
   contact:
     email: grigorevvadim875@yandex.ru
     name: Grigorev Vadim
-  description: Backend API проекта «Цепочка обмена».
+  description: Backend API РїСЂРѕРµРєС‚Р° В«Р¦РµРїРѕС‡РєР° РѕР±РјРµРЅР°В».
   title: Exchange Chain API
   version: "1.0"
 paths:
@@ -251,11 +560,287 @@ paths:
       summary: Регистрация пользователя
       tags:
       - auth
+  /api/v1/chain:
+    post:
+      consumes:
+      - application/json
+      description: Ставит запрос на построение цепочек обмена для указанного желания
+        в очередь. Проверяет существование аккаунта и принадлежность желания этому
+        аккаунту, затем отвечает 202 Accepted; построение выполняется асинхронно воркерами
+        Service, результат пишется в БД по мере нахождения цепей.
+      parameters:
+      - description: Идентификатор пользователя
+        in: body
+        name: user_id
+        required: true
+        schema:
+          type: integer
+      - description: Идентификатор желания
+        in: body
+        name: wished_item_id
+        required: true
+        schema:
+          type: integer
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Запуск построения цепочек для желания
+      tags:
+      - chains
+  /api/v1/chains/{chainId}:
+    get:
+      description: Возвращает одну цепочку со всеми участниками и обменами. Доступ
+        разрешён только участнику этой цепочки.
+      parameters:
+      - description: ID цепочки
+        in: path
+        name: chainId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cb.ChainReadDTO'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Получение цепочки по ID
+      tags:
+      - chains
+  /api/v1/chains/{chainId}/accept:
+    post:
+      description: Фиксирует согласие текущего пользователя. После согласия всех участников
+        блокирует цепочку и резервирует участвующие предметы.
+      parameters:
+      - description: ID цепочки
+        in: path
+        name: chainId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cb.AcceptChainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Принятие цепочки обмена
+      tags:
+      - chains
+  /api/v1/chains/{chainId}/decline:
+    post:
+      description: По текущему пользователю и цепочке определяет получаемый предмет,
+        отмечает пользователя как отказавшегося, отменяет цепочку в PostgreSQL и временно
+        сохраняет отклонённый предмет в Redis.
+      parameters:
+      - description: ID цепочки
+        in: path
+        name: chainId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cb.DeclineChainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Отказ от цепочки обмена
+      tags:
+      - chains
+  /api/v1/chains/by-item:
+    get:
+      description: Возвращает все цепочки обмена, построенные для конкретного желания
+        пользователя. Идентификаторы передаются как query-параметры user_id и wished_item_id.
+      parameters:
+      - description: Идентификатор пользователя
+        in: query
+        name: user_id
+        required: true
+        type: integer
+      - description: Идентификатор желания
+        in: query
+        name: wished_item_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cb.ListChainsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Все цепочки конкретного желания пользователя
+      tags:
+      - chains
+  /api/v1/chains/by-user:
+    get:
+      description: Возвращает цепочки обмена, в которых пользователь является корневым
+        участником или участником бартера. Идентификатор передаётся как query-параметр
+        user_id.
+      parameters:
+      - description: Идентификатор пользователя
+        in: query
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cb.ListChainsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Цепочки пользователя
+      tags:
+      - chains
   /api/v1/items:
+    get:
+      description: Возвращает все предметы, принадлежащие пользователю из JWT, вместе
+        с категориями и фотографиями.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/item.ListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Предметы текущего пользователя
+      tags:
+      - items
     post:
       consumes:
       - multipart/form-data
-      description: Создаёт предмет текущего пользователя и сохраняет до пяти фотографий.
+      description: Создаёт предмет текущего пользователя, связанное по данным запроса
+        желание и сохраняет до пяти фотографий.
       parameters:
       - description: Название предмета
         in: formData
@@ -295,6 +880,11 @@ paths:
       - description: Желаемая категория обмена
         in: formData
         name: wanted_category_name
+        required: true
+        type: string
+      - description: Название или ключевые слова желаемого предмета
+        in: formData
+        name: wanted_title_keywords
         required: true
         type: string
       - collectionFormat: multi
@@ -340,6 +930,44 @@ paths:
       summary: Создание предмета
       tags:
       - items
+  /api/v1/items/{itemId}:
+    get:
+      description: Возвращает конкретный предмет по ID. Доступно любому авторизованному
+        пользователю.
+      parameters:
+      - description: ID предмета
+        in: path
+        name: itemId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/item.ReadResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Получение предмета
+      tags:
+      - items
   /api/v1/me:
     get:
       description: Возвращает публичные данные пользователя из JWT-токена.
@@ -367,42 +995,104 @@ paths:
       summary: Профиль текущего пользователя
       tags:
       - users
-  /health:
+  /api/v1/ratings:
     get:
-      description: Возвращает состояние HTTP-процесса без проверки внешних зависимостей.
+      description: Возвращает средний рейтинг, количество оценок и все записи, где
+        пользователь является получателем оценки.
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httpserver.HealthResponse'
-      summary: Проверка работоспособности
-      tags:
-      - system
-  /ready:
-    get:
-      description: Проверяет доступность PostgreSQL и сообщает, готово ли приложение
-        принимать запросы.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpserver.ReadinessResponse'
-        "503":
-          description: Service Unavailable
+            $ref: '#/definitions/user.UserRatingsDTO'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/httpserver.ErrorResponse'
-      summary: Проверка готовности
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Получение рейтинга и истории оценок текущего пользователя
       tags:
-      - system
+      - users
+    post:
+      consumes:
+      - application/json
+      description: Записывает оценку текущего пользователя для другого участника закрытого
+        бартера и обновляет средний публичный рейтинг получателя. Каждый участник
+        бартера может оценить другого только один раз.
+      parameters:
+      - description: Оценка пользователя и идентификатор бартера
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.UserRatingRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/user.TotalUserRatingDTO'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Создание записи о выставлении рейтинга от одного пользователя к другому
+      tags:
+      - users
+  /api/v1/wishes:
+    get:
+      description: Возвращает все желаемые предметы пользователя, определённого по
+        JWT.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/wish.ListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Желания текущего пользователя
+      tags:
+      - wishes
 schemes:
 - http
 securityDefinitions:
   BearerAuth:
-    description: 'Введите токен в формате: Bearer <access_token>'
+    description: 'Р’РІРµРґРёС‚Рµ С‚РѕРєРµРЅ РІ С„РѕСЂРјР°С‚Рµ: Bearer <access_token>'
     in: header
     name: Authorization
     type: apiKey

@@ -44,3 +44,26 @@ type AuthResult struct {
 	TokenType   string     `json:"token_type" example:"Bearer"`
 	ExpiresIn   int64      `json:"expires_in" example:"86400"`
 }
+
+type UserRatingRequest struct {
+	ToUser   int64   `json:"to_user" validate:"required" example:"2"`
+	Rating   float64 `json:"rating" validate:"required" example:"5"`
+	BarterId int64   `json:"barter_id" validate:"required" example:"1"`
+}
+
+type TotalUserRatingDTO struct {
+	UserRating  float64 `json:"user_rating"`
+	TotalScores int     `json:"total_scores"`
+}
+
+type UserRatingEntry struct {
+	User     PublicUser `json:"public_user"`
+	Rating   float64    `json:"public_rating"`
+	BarterId int64      `json:"barter_id"`
+}
+
+type UserRatingsDTO struct {
+	UserRating  float64           `json:"user_rating"`
+	TotalScores int               `json:"total_scores"`
+	Ratings     []UserRatingEntry `json:"ratings"`
+}
