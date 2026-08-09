@@ -149,7 +149,7 @@ func (s *Service) ListByUserID(ctx context.Context, userID int64) ([]ReadRespons
 		return nil, fmt.Errorf("list user items: %w", err)
 	}
 
-	return toReadResponses(items), nil
+	return s.toReadResponses(items), nil
 }
 
 // GetByID returns an item visible to any authenticated user.
@@ -163,7 +163,161 @@ func (s *Service) GetByID(ctx context.Context, itemID int64) (ReadResponse, erro
 		return ReadResponse{}, fmt.Errorf("get item: %w", err)
 	}
 
-	return toReadResponse(found), nil
+	return s.toReadResponse(found), nil
+}
+
+// AddPhotos validates ownership and appends photos to an existing item.
+func (s *Service) AddPhotos(ctx context.Context, input AddPhotosInput) (AddPhotosResult, error) {
+	if input.UserID <= 0 {
+		return AddPhotosResult{}, &ValidationError{Message: "authenticated user is required"}
+	}
+	if input.ItemID <= 0 {
+		return AddPhotosResult{}, &ValidationError{Message: "itemId must be a positive integer"}
+	}
+	if len(input.Photos) == 0 {
+		return AddPhotosResult{}, &ValidationError{Message: "at least one photo is required"}
+	}
+	if len(input.Photos) > s.maxPhotos {
+		return AddPhotosResult{}, ErrTooManyPhotos
+	}
+
+	found, err := s.repository.GetByID(ctx, input.ItemID)
+	if err != nil {
+		return AddPhotosResult{}, fmt.Errorf("get item: %w", err)
+	}
+	if found.Item.UserID != input.UserID {
+		return AddPhotosResult{}, ErrForbidden
+	}
+	if len(found.Photos)+len(input.Photos) > s.maxPhotos {
+		return AddPhotosResult{}, ErrTooManyPhotos
+	}
+
+	storedPhotos, err := s.fileStorage.SaveItemPhotos(ctx, input.ItemID, input.Photos)
+	if err != nil {
+		return AddPhotosResult{}, err
+	}
+
+	nextPosition := nextPhotoPosition(found.Photos)
+	photoParams := make([]CreatePhotoParams, len(storedPhotos))
+	storedObjectKeys := make([]string, len(storedPhotos))
+	for index, storedPhoto := range storedPhotos {
+		photoParams[index] = CreatePhotoParams{ObjectKey: storedPhoto.ObjectKey, Position: nextPosition + index}
+		storedObjectKeys[index] = storedPhoto.ObjectKey
+	}
+
+	var createdPhotos []Photo
+	err = s.repository.WithinTransaction(ctx, func(transaction Transaction) error {
+		var createErr error
+		createdPhotos, createErr = transaction.CreatePhotos(ctx, input.ItemID, photoParams)
+		if createErr != nil {
+			return fmt.Errorf("create item photo metadata: %w", createErr)
+		}
+		return nil
+	})
+	if err != nil {
+		if cleanupErr := s.fileStorage.DeletePhotos(ctx, storedObjectKeys); cleanupErr != nil {
+			return AddPhotosResult{}, fmt.Errorf("%w; clean up item photos: %v", err, cleanupErr)
+		}
+		return AddPhotosResult{}, err
+	}
+
+	return AddPhotosResult{Photos: s.toPhotoResults(createdPhotos)}, nil
+}
+
+// ReplacePhoto validates ownership and swaps one photo object while preserving its metadata ID.
+func (s *Service) ReplacePhoto(ctx context.Context, input ReplacePhotoInput) (ReplacePhotoResult, error) {
+	if input.UserID <= 0 {
+		return ReplacePhotoResult{}, &ValidationError{Message: "authenticated user is required"}
+	}
+	if input.ItemID <= 0 {
+		return ReplacePhotoResult{}, &ValidationError{Message: "itemId must be a positive integer"}
+	}
+	if input.PhotoID <= 0 {
+		return ReplacePhotoResult{}, &ValidationError{Message: "photoId must be a positive integer"}
+	}
+	if input.Photo.Reader == nil {
+		return ReplacePhotoResult{}, &ValidationError{Message: "photo is required"}
+	}
+
+	found, err := s.repository.GetByID(ctx, input.ItemID)
+	if err != nil {
+		return ReplacePhotoResult{}, fmt.Errorf("get item: %w", err)
+	}
+	if found.Item.UserID != input.UserID {
+		return ReplacePhotoResult{}, ErrForbidden
+	}
+
+	var oldPhoto Photo
+	for _, photo := range found.Photos {
+		if photo.ID == input.PhotoID {
+			oldPhoto = photo
+			break
+		}
+	}
+	if oldPhoto.ID == 0 {
+		return ReplacePhotoResult{}, ErrPhotoNotFound
+	}
+
+	storedPhotos, err := s.fileStorage.SaveItemPhotos(ctx, input.ItemID, []PhotoUpload{input.Photo})
+	if err != nil {
+		return ReplacePhotoResult{}, err
+	}
+	newObjectKey := storedPhotos[0].ObjectKey
+
+	updatedPhoto, err := s.repository.UpdatePhoto(ctx, input.ItemID, input.PhotoID, newObjectKey)
+	if err != nil {
+		if cleanupErr := s.fileStorage.DeletePhotos(ctx, []string{newObjectKey}); cleanupErr != nil {
+			return ReplacePhotoResult{}, fmt.Errorf("%w; clean up replacement photo: %v", err, cleanupErr)
+		}
+		return ReplacePhotoResult{}, fmt.Errorf("replace item photo metadata: %w", err)
+	}
+
+	if err := s.fileStorage.DeletePhotos(ctx, []string{oldPhoto.ObjectKey}); err != nil {
+		return ReplacePhotoResult{}, err
+	}
+
+	return ReplacePhotoResult{Photo: s.toPhotoResult(updatedPhoto)}, nil
+}
+
+// DeletePhoto validates ownership and removes a photo from an existing item.
+func (s *Service) DeletePhoto(ctx context.Context, userID, itemID, photoID int64) error {
+	if userID <= 0 {
+		return &ValidationError{Message: "authenticated user is required"}
+	}
+	if itemID <= 0 {
+		return &ValidationError{Message: "itemId must be a positive integer"}
+	}
+	if photoID <= 0 {
+		return &ValidationError{Message: "photoId must be a positive integer"}
+	}
+
+	found, err := s.repository.GetByID(ctx, itemID)
+	if err != nil {
+		return fmt.Errorf("get item: %w", err)
+	}
+	if found.Item.UserID != userID {
+		return ErrForbidden
+	}
+
+	var photoToDelete Photo
+	for _, photo := range found.Photos {
+		if photo.ID == photoID {
+			photoToDelete = photo
+			break
+		}
+	}
+	if photoToDelete.ID == 0 {
+		return ErrPhotoNotFound
+	}
+
+	if err := s.repository.DeletePhoto(ctx, itemID, photoID); err != nil {
+		return fmt.Errorf("delete item photo metadata: %w", err)
+	}
+	if err := s.fileStorage.DeletePhotos(ctx, []string{photoToDelete.ObjectKey}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Service) validate(input CreateInput) error {
@@ -220,11 +374,6 @@ func (s *Service) toCreateResponse(
 	wantedCategory category.Category,
 	photos []Photo,
 ) CreateResponse {
-	photoResponses := make([]PhotoResponse, len(photos))
-	for index, photo := range photos {
-		photoResponses[index] = PhotoResponse{ID: photo.ID, URL: s.fileStorage.PublicURL(photo.ObjectKey)}
-	}
-
 	return CreateResponse{
 		ID:          created.ID,
 		Title:       created.Title,
@@ -250,26 +399,21 @@ func (s *Service) toCreateResponse(
 			PriceMax:      createdWish.PriceMax,
 			TitleKeywords: createdWish.TitleKeywords,
 		},
-		Photos:    photoResponses,
+		Photos:    s.toPhotoResponses(photos),
 		Status:    created.Status,
 		CreatedAt: created.CreatedAt,
 	}
 }
 
-func toReadResponses(items []Details) []ReadResponse {
+func (s *Service) toReadResponses(items []Details) []ReadResponse {
 	responses := make([]ReadResponse, 0, len(items))
 	for _, found := range items {
-		responses = append(responses, toReadResponse(found))
+		responses = append(responses, s.toReadResponse(found))
 	}
 	return responses
 }
 
-func toReadResponse(found Details) ReadResponse {
-	photos := make([]PhotoResponse, 0, len(found.Photos))
-	for _, photo := range found.Photos {
-		photos = append(photos, PhotoResponse{ID: photo.ID, URL: photo.ObjectKey})
-	}
-
+func (s *Service) toReadResponse(found Details) ReadResponse {
 	return ReadResponse{
 		ID:          found.Item.ID,
 		UserID:      found.Item.UserID,
@@ -286,9 +430,43 @@ func toReadResponse(found Details) ReadResponse {
 			ID:   found.WantedCategory.ID,
 			Name: found.WantedCategory.Name,
 		},
-		Photos:    photos,
+		Photos:    s.toPhotoResponses(found.Photos),
 		Status:    found.Item.Status,
 		CreatedAt: found.Item.CreatedAt,
 		UpdatedAt: found.Item.UpdatedAt,
 	}
+}
+
+func (s *Service) toPhotoResponses(photos []Photo) []PhotoResponse {
+	responses := make([]PhotoResponse, len(photos))
+	for index, photo := range photos {
+		responses[index] = s.toPhotoResponse(photo)
+	}
+	return responses
+}
+
+func (s *Service) toPhotoResponse(photo Photo) PhotoResponse {
+	return PhotoResponse{ID: photo.ID, URL: s.fileStorage.PublicURL(photo.ObjectKey)}
+}
+
+func (s *Service) toPhotoResults(photos []Photo) []PhotoResult {
+	results := make([]PhotoResult, len(photos))
+	for index, photo := range photos {
+		results[index] = s.toPhotoResult(photo)
+	}
+	return results
+}
+
+func (s *Service) toPhotoResult(photo Photo) PhotoResult {
+	return PhotoResult{ID: photo.ID, URL: s.fileStorage.PublicURL(photo.ObjectKey)}
+}
+
+func nextPhotoPosition(photos []Photo) int {
+	nextPosition := 0
+	for _, photo := range photos {
+		if photo.Position >= nextPosition {
+			nextPosition = photo.Position + 1
+		}
+	}
+	return nextPosition
 }

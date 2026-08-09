@@ -14,13 +14,20 @@ import (
 )
 
 type handlerServiceStub struct {
-	result       CreateResponse
-	listResult   []ReadResponse
-	getResult    ReadResponse
-	err          error
-	input        CreateInput
-	listedUserID int64
-	requestedID  int64
+	result          CreateResponse
+	addPhotosResult AddPhotosResult
+	replaceResult   ReplacePhotoResult
+	listResult      []ReadResponse
+	getResult       ReadResponse
+	err             error
+	input           CreateInput
+	addPhotosInput  AddPhotosInput
+	replaceInput    ReplacePhotoInput
+	deletedUserID   int64
+	deletedItemID   int64
+	deletedPhotoID  int64
+	listedUserID    int64
+	requestedID     int64
 }
 
 func (s *handlerServiceStub) Create(_ context.Context, input CreateInput) (CreateResponse, error) {
@@ -36,6 +43,23 @@ func (s *handlerServiceStub) ListByUserID(_ context.Context, userID int64) ([]Re
 func (s *handlerServiceStub) GetByID(_ context.Context, itemID int64) (ReadResponse, error) {
 	s.requestedID = itemID
 	return s.getResult, s.err
+}
+
+func (s *handlerServiceStub) AddPhotos(_ context.Context, input AddPhotosInput) (AddPhotosResult, error) {
+	s.addPhotosInput = input
+	return s.addPhotosResult, s.err
+}
+
+func (s *handlerServiceStub) ReplacePhoto(_ context.Context, input ReplacePhotoInput) (ReplacePhotoResult, error) {
+	s.replaceInput = input
+	return s.replaceResult, s.err
+}
+
+func (s *handlerServiceStub) DeletePhoto(_ context.Context, userID, itemID, photoID int64) error {
+	s.deletedUserID = userID
+	s.deletedItemID = itemID
+	s.deletedPhotoID = photoID
+	return s.err
 }
 
 func TestCreateHandlerUsesAuthenticatedUserID(t *testing.T) {
@@ -160,6 +184,78 @@ func TestGetByIDHandlerUsesPathID(t *testing.T) {
 	}
 }
 
+func TestAddPhotosHandlerUsesAuthenticatedUserAndPathID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &handlerServiceStub{addPhotosResult: AddPhotosResult{Photos: []PhotoResult{{ID: 501, URL: "/uploads/items/101/photo.png"}}}}
+	handler := NewHandler(service, 10<<20, 5)
+	body, contentType := multipartBody(t, nil, 2)
+	router := gin.New()
+	router.POST("/items/:itemId/photos", func(c *gin.Context) {
+		c.Set(middleware.UserIDContextKey, int64(42))
+		handler.AddPhotos(c)
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/items/101/photos", body)
+	request.Header.Set("Content-Type", contentType)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusCreated, response.Body.String())
+	}
+	if service.addPhotosInput.UserID != 42 || service.addPhotosInput.ItemID != 101 || len(service.addPhotosInput.Photos) != 2 {
+		t.Fatalf("add photos input = %+v", service.addPhotosInput)
+	}
+}
+
+func TestDeletePhotoHandlerUsesAuthenticatedUserAndPathIDs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &handlerServiceStub{}
+	handler := NewHandler(service, 10<<20, 5)
+	router := gin.New()
+	router.DELETE("/items/:itemId/photos/:photoId", func(c *gin.Context) {
+		c.Set(middleware.UserIDContextKey, int64(42))
+		handler.DeletePhoto(c)
+	})
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/items/101/photos/501", nil))
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusNoContent, response.Body.String())
+	}
+	if service.deletedUserID != 42 || service.deletedItemID != 101 || service.deletedPhotoID != 501 {
+		t.Fatalf("deleted user/item/photo = %d/%d/%d", service.deletedUserID, service.deletedItemID, service.deletedPhotoID)
+	}
+}
+
+func TestReplacePhotoHandlerUsesAuthenticatedUserAndPathIDs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &handlerServiceStub{replaceResult: ReplacePhotoResult{Photo: PhotoResult{ID: 501, URL: "/uploads/items/101/photo.png"}}}
+	handler := NewHandler(service, 10<<20, 5)
+	body, contentType := singlePhotoBody(t)
+	router := gin.New()
+	router.PUT("/items/:itemId/photos/:photoId", func(c *gin.Context) {
+		c.Set(middleware.UserIDContextKey, int64(42))
+		handler.ReplacePhoto(c)
+	})
+
+	request := httptest.NewRequest(http.MethodPut, "/items/101/photos/501", body)
+	request.Header.Set("Content-Type", contentType)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if service.replaceInput.UserID != 42 || service.replaceInput.ItemID != 101 || service.replaceInput.PhotoID != 501 {
+		t.Fatalf("replace input = %+v", service.replaceInput)
+	}
+	if service.replaceInput.Photo.Reader == nil {
+		t.Fatal("replacement photo was not passed to service")
+	}
+}
+
 func multipartBody(t *testing.T, fields map[string]string, photoCount int) (*bytes.Buffer, string) {
 	t.Helper()
 	body := &bytes.Buffer{}
@@ -177,6 +273,24 @@ func multipartBody(t *testing.T, fields map[string]string, photoCount int) (*byt
 		if _, err := part.Write([]byte("\x89PNG\r\n\x1a\n")); err != nil {
 			t.Fatalf("write multipart photo: %v", err)
 		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	return body, writer.FormDataContentType()
+}
+
+func singlePhotoBody(t *testing.T) (*bytes.Buffer, string) {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("photo", "replacement.png")
+	if err != nil {
+		t.Fatalf("create multipart photo: %v", err)
+	}
+	if _, err := part.Write([]byte("\x89PNG\r\n\x1a\n")); err != nil {
+		t.Fatalf("write multipart photo: %v", err)
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close multipart writer: %v", err)

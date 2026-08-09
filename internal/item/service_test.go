@@ -19,8 +19,15 @@ type fakeRepository struct {
 	transactionError error
 	createError      error
 	photoError       error
+	updatePhotoError error
+	deletePhotoError error
 	createParams     item.CreateItemParams
 	photoParams      []item.CreatePhotoParams
+	updatedItemID    int64
+	updatedPhotoID   int64
+	updatedObjectKey string
+	deletedItemID    int64
+	deletedPhotoID   int64
 	wishParams       item.CreateWishParams
 	committed        bool
 	listResult       []item.Details
@@ -44,6 +51,31 @@ func (r *fakeRepository) ListByUserID(_ context.Context, _ int64) ([]item.Detail
 
 func (r *fakeRepository) GetByID(_ context.Context, _ int64) (item.Details, error) {
 	return r.getResult, r.readError
+}
+
+func (r *fakeRepository) UpdatePhoto(_ context.Context, itemID, photoID int64, objectKey string) (item.Photo, error) {
+	if r.updatePhotoError != nil {
+		return item.Photo{}, r.updatePhotoError
+	}
+	r.updatedItemID = itemID
+	r.updatedPhotoID = photoID
+	r.updatedObjectKey = objectKey
+
+	return item.Photo{
+		ID:        photoID,
+		ItemID:    itemID,
+		ObjectKey: objectKey,
+		Position:  2,
+	}, nil
+}
+
+func (r *fakeRepository) DeletePhoto(_ context.Context, itemID, photoID int64) error {
+	if r.deletePhotoError != nil {
+		return r.deletePhotoError
+	}
+	r.deletedItemID = itemID
+	r.deletedPhotoID = photoID
+	return nil
 }
 
 type fakeTransaction struct {
@@ -138,9 +170,11 @@ func (r *fakeCategoryRepository) GetByName(_ context.Context, name string) (cate
 }
 
 type fakeStorage struct {
-	error       error
-	savedItemID int64
-	deleteID    int64
+	error             error
+	deletePhotosError error
+	savedItemID       int64
+	deleteID          int64
+	deletedObjectKeys []string
 }
 
 func (s *fakeStorage) SaveItemPhotos(
@@ -164,6 +198,11 @@ func (s *fakeStorage) SaveItemPhotos(
 func (s *fakeStorage) DeleteItemPhotos(_ context.Context, itemID int64) error {
 	s.deleteID = itemID
 	return nil
+}
+
+func (s *fakeStorage) DeletePhotos(_ context.Context, objectKeys []string) error {
+	s.deletedObjectKeys = append(s.deletedObjectKeys, objectKeys...)
+	return s.deletePhotosError
 }
 
 func (s *fakeStorage) PublicURL(objectKey string) string {
@@ -351,6 +390,273 @@ func TestCreateCleansFilesWhenPhotoMetadataFails(t *testing.T) {
 	}
 	if repository.committed || storage.deleteID != 101 {
 		t.Fatalf("committed = %v, cleanup item ID = %d", repository.committed, storage.deleteID)
+	}
+}
+
+func TestListByUserIDBuildsPhotoPublicURLs(t *testing.T) {
+	repository := &fakeRepository{listResult: []item.Details{{
+		Item: item.Item{ID: 101, UserID: 42, Status: item.StatusSearching},
+		Photos: []item.Photo{{
+			ID:        501,
+			ItemID:    101,
+			ObjectKey: "items/101/photo-1.jpg",
+		}},
+	}}}
+	service := item.NewService(repository, newFakeCategoryRepository(), &fakeStorage{}, 5, fakeChainEnqueer{})
+
+	result, err := service.ListByUserID(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("ListByUserID() error = %v", err)
+	}
+	if result[0].Photos[0].URL != "/uploads/items/101/photo-1.jpg" {
+		t.Fatalf("photo URL = %q", result[0].Photos[0].URL)
+	}
+}
+
+func TestAddPhotosAppendsToOwnedItem(t *testing.T) {
+	repository := &fakeRepository{getResult: item.Details{
+		Item: item.Item{ID: 101, UserID: 42},
+		Photos: []item.Photo{{
+			ID:       501,
+			ItemID:   101,
+			Position: 3,
+		}},
+	}}
+	storage := &fakeStorage{}
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
+
+	result, err := service.AddPhotos(context.Background(), item.AddPhotosInput{
+		UserID: 42,
+		ItemID: 101,
+		Photos: []item.PhotoUpload{{Reader: bytes.NewReader([]byte("photo")), Size: 5}},
+	})
+	if err != nil {
+		t.Fatalf("AddPhotos() error = %v", err)
+	}
+	if storage.savedItemID != 101 || len(result.Photos) != 1 {
+		t.Fatalf("saved item ID = %d, result = %#v", storage.savedItemID, result)
+	}
+	if repository.photoParams[0].Position != 4 {
+		t.Fatalf("photo params = %#v", repository.photoParams)
+	}
+}
+
+func TestAddPhotosRejectsForbiddenAndLimit(t *testing.T) {
+	tests := []struct {
+		name      string
+		details   item.Details
+		input     item.AddPhotosInput
+		wantError error
+	}{
+		{
+			name: "other owner",
+			details: item.Details{
+				Item: item.Item{ID: 101, UserID: 7},
+			},
+			input: item.AddPhotosInput{
+				UserID: 42,
+				ItemID: 101,
+				Photos: []item.PhotoUpload{{Reader: bytes.NewReader([]byte("photo")), Size: 5}},
+			},
+			wantError: item.ErrForbidden,
+		},
+		{
+			name: "too many total photos",
+			details: item.Details{
+				Item: item.Item{ID: 101, UserID: 42},
+				Photos: []item.Photo{
+					{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}, {ID: 5},
+				},
+			},
+			input: item.AddPhotosInput{
+				UserID: 42,
+				ItemID: 101,
+				Photos: []item.PhotoUpload{{Reader: bytes.NewReader([]byte("photo")), Size: 5}},
+			},
+			wantError: item.ErrTooManyPhotos,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := item.NewService(&fakeRepository{getResult: tt.details}, newFakeCategoryRepository(), &fakeStorage{}, 5, fakeChainEnqueer{})
+
+			_, err := service.AddPhotos(context.Background(), tt.input)
+			if !errors.Is(err, tt.wantError) {
+				t.Fatalf("AddPhotos() error = %v, want %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestAddPhotosCleansStoredFilesWhenMetadataFails(t *testing.T) {
+	repository := &fakeRepository{
+		getResult:  item.Details{Item: item.Item{ID: 101, UserID: 42}},
+		photoError: errRepository,
+	}
+	storage := &fakeStorage{}
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
+
+	_, err := service.AddPhotos(context.Background(), item.AddPhotosInput{
+		UserID: 42,
+		ItemID: 101,
+		Photos: []item.PhotoUpload{{Reader: bytes.NewReader([]byte("photo")), Size: 5}},
+	})
+	if !errors.Is(err, errRepository) {
+		t.Fatalf("AddPhotos() error = %v, want repository error", err)
+	}
+	if len(storage.deletedObjectKeys) != 1 || storage.deletedObjectKeys[0] == "" {
+		t.Fatalf("deleted object keys = %#v", storage.deletedObjectKeys)
+	}
+}
+
+func TestDeletePhotoDeletesMetadataAndStoredObject(t *testing.T) {
+	repository := &fakeRepository{getResult: item.Details{
+		Item: item.Item{ID: 101, UserID: 42},
+		Photos: []item.Photo{{
+			ID:        501,
+			ItemID:    101,
+			ObjectKey: "items/101/photo-1.jpg",
+		}},
+	}}
+	storage := &fakeStorage{}
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
+
+	if err := service.DeletePhoto(context.Background(), 42, 101, 501); err != nil {
+		t.Fatalf("DeletePhoto() error = %v", err)
+	}
+	if repository.deletedItemID != 101 || repository.deletedPhotoID != 501 {
+		t.Fatalf("deleted metadata = %d/%d", repository.deletedItemID, repository.deletedPhotoID)
+	}
+	if len(storage.deletedObjectKeys) != 1 || storage.deletedObjectKeys[0] != "items/101/photo-1.jpg" {
+		t.Fatalf("deleted object keys = %#v", storage.deletedObjectKeys)
+	}
+}
+
+func TestReplacePhotoUpdatesMetadataAndDeletesOldObject(t *testing.T) {
+	repository := &fakeRepository{getResult: item.Details{
+		Item: item.Item{ID: 101, UserID: 42},
+		Photos: []item.Photo{{
+			ID:        501,
+			ItemID:    101,
+			ObjectKey: "items/101/old.jpg",
+			Position:  2,
+		}},
+	}}
+	storage := &fakeStorage{}
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
+
+	result, err := service.ReplacePhoto(context.Background(), item.ReplacePhotoInput{
+		UserID:  42,
+		ItemID:  101,
+		PhotoID: 501,
+		Photo:   item.PhotoUpload{Reader: bytes.NewReader([]byte("photo")), Size: 5},
+	})
+	if err != nil {
+		t.Fatalf("ReplacePhoto() error = %v", err)
+	}
+	if repository.updatedItemID != 101 || repository.updatedPhotoID != 501 || repository.updatedObjectKey == "" {
+		t.Fatalf("updated photo = %d/%d/%q", repository.updatedItemID, repository.updatedPhotoID, repository.updatedObjectKey)
+	}
+	if len(storage.deletedObjectKeys) != 1 || storage.deletedObjectKeys[0] != "items/101/old.jpg" {
+		t.Fatalf("deleted object keys = %#v", storage.deletedObjectKeys)
+	}
+	if result.Photo.ID != 501 || result.Photo.URL == "" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestReplacePhotoRejectsForbiddenAndMissingPhoto(t *testing.T) {
+	tests := []struct {
+		name      string
+		details   item.Details
+		wantError error
+	}{
+		{
+			name:      "other owner",
+			details:   item.Details{Item: item.Item{ID: 101, UserID: 7}},
+			wantError: item.ErrForbidden,
+		},
+		{
+			name:      "missing photo",
+			details:   item.Details{Item: item.Item{ID: 101, UserID: 42}},
+			wantError: item.ErrPhotoNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := item.NewService(&fakeRepository{getResult: tt.details}, newFakeCategoryRepository(), &fakeStorage{}, 5, fakeChainEnqueer{})
+
+			_, err := service.ReplacePhoto(context.Background(), item.ReplacePhotoInput{
+				UserID:  42,
+				ItemID:  101,
+				PhotoID: 501,
+				Photo:   item.PhotoUpload{Reader: bytes.NewReader([]byte("photo")), Size: 5},
+			})
+			if !errors.Is(err, tt.wantError) {
+				t.Fatalf("ReplacePhoto() error = %v, want %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestReplacePhotoCleansNewObjectWhenMetadataUpdateFails(t *testing.T) {
+	repository := &fakeRepository{
+		getResult: item.Details{
+			Item: item.Item{ID: 101, UserID: 42},
+			Photos: []item.Photo{{
+				ID:        501,
+				ItemID:    101,
+				ObjectKey: "items/101/old.jpg",
+			}},
+		},
+		updatePhotoError: errRepository,
+	}
+	storage := &fakeStorage{}
+	service := item.NewService(repository, newFakeCategoryRepository(), storage, 5, fakeChainEnqueer{})
+
+	_, err := service.ReplacePhoto(context.Background(), item.ReplacePhotoInput{
+		UserID:  42,
+		ItemID:  101,
+		PhotoID: 501,
+		Photo:   item.PhotoUpload{Reader: bytes.NewReader([]byte("photo")), Size: 5},
+	})
+	if !errors.Is(err, errRepository) {
+		t.Fatalf("ReplacePhoto() error = %v, want repository error", err)
+	}
+	if len(storage.deletedObjectKeys) != 1 || storage.deletedObjectKeys[0] == "" || storage.deletedObjectKeys[0] == "items/101/old.jpg" {
+		t.Fatalf("deleted object keys = %#v", storage.deletedObjectKeys)
+	}
+}
+
+func TestDeletePhotoRejectsForbiddenAndMissingPhoto(t *testing.T) {
+	tests := []struct {
+		name      string
+		details   item.Details
+		wantError error
+	}{
+		{
+			name:      "other owner",
+			details:   item.Details{Item: item.Item{ID: 101, UserID: 7}},
+			wantError: item.ErrForbidden,
+		},
+		{
+			name:      "missing photo",
+			details:   item.Details{Item: item.Item{ID: 101, UserID: 42}},
+			wantError: item.ErrPhotoNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := item.NewService(&fakeRepository{getResult: tt.details}, newFakeCategoryRepository(), &fakeStorage{}, 5, fakeChainEnqueer{})
+
+			err := service.DeletePhoto(context.Background(), 42, 101, 501)
+			if !errors.Is(err, tt.wantError) {
+				t.Fatalf("DeletePhoto() error = %v, want %v", err, tt.wantError)
+			}
+		})
 	}
 }
 

@@ -47,13 +47,13 @@ func (s *LocalStorage) SaveItemPhotos(
 
 	for _, upload := range photos {
 		if err := ctx.Err(); err != nil {
-			_ = os.RemoveAll(itemDirectory)
+			_ = s.DeletePhotos(context.Background(), storedObjectKeys(stored))
 			return nil, err
 		}
 
 		storedPhoto, err := s.savePhoto(itemDirectory, itemID, upload)
 		if err != nil {
-			_ = os.RemoveAll(itemDirectory)
+			_ = s.DeletePhotos(context.Background(), storedObjectKeys(stored))
 			return nil, err
 		}
 		stored = append(stored, storedPhoto)
@@ -69,6 +69,21 @@ func (s *LocalStorage) DeleteItemPhotos(_ context.Context, itemID int64) error {
 	}
 	if err := os.RemoveAll(s.itemDirectory(itemID)); err != nil {
 		return fmt.Errorf("%w: remove item upload directory", item.ErrFileStorage)
+	}
+
+	return nil
+}
+
+// DeletePhotos removes selected locally stored images.
+func (s *LocalStorage) DeletePhotos(_ context.Context, objectKeys []string) error {
+	for _, objectKey := range objectKeys {
+		if objectKey == "" {
+			continue
+		}
+		filePath := filepath.Join(s.baseDir, filepath.FromSlash(objectKey))
+		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("%w: remove uploaded image", item.ErrFileStorage)
+		}
 	}
 
 	return nil
@@ -126,4 +141,14 @@ func randomFilename(extension string) (string, error) {
 	}
 
 	return hex.EncodeToString(randomBytes) + extension, nil
+}
+
+func storedObjectKeys(photos []item.StoredPhoto) []string {
+	objectKeys := make([]string, 0, len(photos))
+	for _, photo := range photos {
+		if photo.ObjectKey != "" {
+			objectKeys = append(objectKeys, photo.ObjectKey)
+		}
+	}
+	return objectKeys
 }

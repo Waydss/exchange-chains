@@ -30,6 +30,37 @@ type CreateInput struct {
 	Photos              []PhotoUpload
 }
 
+// AddPhotosInput contains uploaded photos for an existing item.
+type AddPhotosInput struct {
+	UserID int64
+	ItemID int64
+	Photos []PhotoUpload
+}
+
+// ReplacePhotoInput contains a replacement upload for one existing item photo.
+type ReplacePhotoInput struct {
+	UserID  int64
+	ItemID  int64
+	PhotoID int64
+	Photo   PhotoUpload
+}
+
+// PhotoResult is photo data returned by item use cases.
+type PhotoResult struct {
+	ID  int64
+	URL string
+}
+
+// AddPhotosResult contains photos appended to an existing item.
+type AddPhotosResult struct {
+	Photos []PhotoResult
+}
+
+// ReplacePhotoResult contains the updated photo metadata.
+type ReplacePhotoResult struct {
+	Photo PhotoResult
+}
+
 // CategoryResponse is the public category representation nested in an item.
 type CategoryResponse struct {
 	ID   int64  `json:"id" example:"1"`
@@ -87,4 +118,14 @@ type ReadResponse struct {
 // ListResponse contains every item owned by the authenticated user.
 type ListResponse struct {
 	Items []ReadResponse `json:"items"`
+}
+
+// AddPhotosResponse contains photos appended to an existing item.
+type AddPhotosResponse struct {
+	Photos []PhotoResponse `json:"photos"`
+}
+
+// ReplacePhotoResponse contains the updated photo metadata.
+type ReplacePhotoResponse struct {
+	Photo PhotoResponse `json:"photo"`
 }

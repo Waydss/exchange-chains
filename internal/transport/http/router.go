@@ -13,13 +13,16 @@ import (
 const readyCheckTimeout = 2 * time.Second
 
 type Routes struct {
-	Register   gin.HandlerFunc
-	Login      gin.HandlerFunc
-	Me         gin.HandlerFunc
-	CreateItem gin.HandlerFunc
-	ListItems  gin.HandlerFunc
-	GetItem    gin.HandlerFunc
-	ListWishes gin.HandlerFunc
+	Register     gin.HandlerFunc
+	Login        gin.HandlerFunc
+	Me           gin.HandlerFunc
+	CreateItem   gin.HandlerFunc
+	ListItems    gin.HandlerFunc
+	GetItem      gin.HandlerFunc
+	AddPhotos    gin.HandlerFunc
+	ReplacePhoto gin.HandlerFunc
+	DeletePhoto  gin.HandlerFunc
+	ListWishes   gin.HandlerFunc
 
 	// FIXME Remove this at one point...
 	CreateChain gin.HandlerFunc
@@ -68,6 +71,9 @@ func NewRouter(
 	protected.POST("/items", routes.CreateItem)
 	protected.GET("/items", routes.ListItems)
 	protected.GET("/items/:itemId", routes.GetItem)
+	protected.POST("/items/:itemId/photos", routes.AddPhotos)
+	protected.PUT("/items/:itemId/photos/:photoId", routes.ReplacePhoto)
+	protected.DELETE("/items/:itemId/photos/:photoId", routes.DeletePhoto)
 	protected.GET("/wishes", routes.ListWishes)
 	protected.POST("/chain", routes.CreateChain)
 	protected.GET("/chains/by-user", routes.GetChainsByUser)

@@ -18,12 +18,12 @@ type S3Config struct {
 	Endpoint      string
 	AccessKey     string
 	SecretKey     string
-	Bucket         string
-	Region         string
-	PublicBaseURL  string
-	UseSSL         bool
-	MaxFileSize    int64
-	EnsureBucket   bool
+	Bucket        string
+	Region        string
+	PublicBaseURL string
+	UseSSL        bool
+	MaxFileSize   int64
+	EnsureBucket  bool
 }
 
 // S3Storage stores item images in an S3-compatible bucket.
@@ -78,13 +78,13 @@ func (s *S3Storage) SaveItemPhotos(
 
 	for _, upload := range photos {
 		if err := ctx.Err(); err != nil {
-			_ = s.DeleteItemPhotos(context.Background(), itemID)
+			_ = s.DeletePhotos(context.Background(), storedObjectKeys(stored))
 			return nil, err
 		}
 
 		storedPhoto, err := s.savePhoto(ctx, itemID, upload)
 		if err != nil {
-			_ = s.DeleteItemPhotos(context.Background(), itemID)
+			_ = s.DeletePhotos(context.Background(), storedObjectKeys(stored))
 			return nil, err
 		}
 		stored = append(stored, storedPhoto)
@@ -107,6 +107,21 @@ func (s *S3Storage) DeleteItemPhotos(ctx context.Context, itemID int64) error {
 	for removeError := range errorCh {
 		if removeError.Err != nil {
 			return fmt.Errorf("%w: remove S3 object %q: %v", item.ErrFileStorage, removeError.ObjectName, removeError.Err)
+		}
+	}
+
+	return nil
+}
+
+// DeletePhotos removes selected uploaded objects.
+func (s *S3Storage) DeletePhotos(ctx context.Context, objectKeys []string) error {
+	for _, objectKey := range objectKeys {
+		objectKey = strings.TrimLeft(objectKey, "/")
+		if objectKey == "" {
+			continue
+		}
+		if err := s.client.RemoveObject(ctx, s.bucket, objectKey, minio.RemoveObjectOptions{}); err != nil {
+			return fmt.Errorf("%w: remove S3 object %q: %v", item.ErrFileStorage, objectKey, err)
 		}
 	}
 
