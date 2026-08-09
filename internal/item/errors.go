@@ -5,6 +5,10 @@ import "errors"
 var (
 	// ErrNotFound indicates that an item does not exist.
 	ErrNotFound = errors.New("item not found")
+	// ErrPhotoNotFound indicates that an item photo does not exist.
+	ErrPhotoNotFound = errors.New("item photo not found")
+	// ErrForbidden indicates that the authenticated user cannot modify the item.
+	ErrForbidden = errors.New("item modification forbidden")
 	// ErrCategoryNotFound indicates that the offered category does not exist.
 	ErrCategoryNotFound = errors.New("category not found")
 	// ErrWantedCategoryNotFound indicates that the requested category does not exist.

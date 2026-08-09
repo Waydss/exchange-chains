@@ -21,8 +21,8 @@ type CreateItemParams struct {
 
 // CreatePhotoParams contains database fields for a stored photo.
 type CreatePhotoParams struct {
-	URL      string
-	Position int
+	ObjectKey string
+	Position  int
 }
 
 // CreateWishParams contains database fields for a wanted item.
@@ -54,6 +54,8 @@ type Repository interface {
 	WithinTransaction(ctx context.Context, fn func(Transaction) error) error
 	ListByUserID(ctx context.Context, userID int64) ([]Details, error)
 	GetByID(ctx context.Context, itemID int64) (Details, error)
+	UpdatePhoto(ctx context.Context, itemID, photoID int64, objectKey string) (Photo, error)
+	DeletePhoto(ctx context.Context, itemID, photoID int64) error
 }
 
 // CategoryRepository is the category lookup capability required by the service.
@@ -65,4 +67,6 @@ type CategoryRepository interface {
 type FileStorage interface {
 	SaveItemPhotos(ctx context.Context, itemID int64, photos []PhotoUpload) ([]StoredPhoto, error)
 	DeleteItemPhotos(ctx context.Context, itemID int64) error
+	DeletePhotos(ctx context.Context, objectKeys []string) error
+	PublicURL(objectKey string) string
 }

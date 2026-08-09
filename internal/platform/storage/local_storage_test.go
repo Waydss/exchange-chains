@@ -28,25 +28,36 @@ func TestLocalStorageSavesMultipleDetectedImageTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveItemPhotos() error = %v", err)
 	}
-	if len(stored) != 2 || !strings.HasSuffix(stored[0].URL, ".jpg") || !strings.HasSuffix(stored[1].URL, ".png") {
+	if len(stored) != 2 || !strings.HasSuffix(stored[0].ObjectKey, ".jpg") || !strings.HasSuffix(stored[1].ObjectKey, ".png") {
 		t.Fatalf("stored photos = %#v", stored)
 	}
 
 	for _, photo := range stored {
-		filename := filepath.Base(photo.URL)
+		filename := filepath.Base(photo.ObjectKey)
 		if _, err := os.Stat(filepath.Join(baseDirectory, "items", "101", filename)); err != nil {
 			t.Fatalf("stored file %q: %v", filename, err)
+		}
+		if got := storage.PublicURL(photo.ObjectKey); !strings.HasPrefix(got, "/uploads/items/101/") {
+			t.Fatalf("PublicURL() = %q, want uploads URL", got)
 		}
 	}
 }
 
-func TestLocalStorageRejectsUnsupportedImageAndCleansDirectory(t *testing.T) {
+func TestLocalStorageRejectsUnsupportedImageAndCleansOnlyCurrentUpload(t *testing.T) {
 	baseDirectory := t.TempDir()
 	storage, err := NewLocalStorage(baseDirectory, 1024)
 	if err != nil {
 		t.Fatalf("NewLocalStorage() error = %v", err)
 	}
 	jpeg := append([]byte{0xff, 0xd8, 0xff, 0xe0}, bytes.Repeat([]byte{0}, 600)...)
+
+	initial, err := storage.SaveItemPhotos(context.Background(), 101, []item.PhotoUpload{
+		{Reader: bytes.NewReader(jpeg), Size: int64(len(jpeg))},
+	})
+	if err != nil {
+		t.Fatalf("SaveItemPhotos() initial error = %v", err)
+	}
+	initialFilename := filepath.Base(initial[0].ObjectKey)
 
 	_, err = storage.SaveItemPhotos(context.Background(), 101, []item.PhotoUpload{
 		{Reader: bytes.NewReader(jpeg), Size: int64(len(jpeg))},
@@ -55,8 +66,16 @@ func TestLocalStorageRejectsUnsupportedImageAndCleansDirectory(t *testing.T) {
 	if !errors.Is(err, item.ErrUnsupportedImageType) {
 		t.Fatalf("SaveItemPhotos() error = %v, want ErrUnsupportedImageType", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(baseDirectory, "items", "101")); !os.IsNotExist(statErr) {
-		t.Fatalf("partial item directory was not removed: %v", statErr)
+	itemDirectory := filepath.Join(baseDirectory, "items", "101")
+	if _, statErr := os.Stat(filepath.Join(itemDirectory, initialFilename)); statErr != nil {
+		t.Fatalf("existing item photo was removed: %v", statErr)
+	}
+	entries, err := os.ReadDir(itemDirectory)
+	if err != nil {
+		t.Fatalf("read item directory: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("item directory entries = %d, want only existing photo", len(entries))
 	}
 }
 

@@ -61,12 +61,13 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("load configuration: %w", err)
 	}
 
-	pool, err := database.Connect(context.Background(), cfg.PG.URL)
+	setupContext := context.Background()
+	pool, err := database.Connect(setupContext, cfg.PG.URL)
 	if err != nil {
 		return nil, fmt.Errorf("connect to database: %w", err)
 	}
 
-	redisConnection, err := redisclient.Connect(context.Background(), redisclient.Config{
+	redisConnection, err := redisclient.Connect(setupContext, redisclient.Config{
 		Addr:         cfg.Redis.Addr,
 		Password:     cfg.Redis.Password,
 		DB:           cfg.Redis.DB,
@@ -85,7 +86,7 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("initialize JWT provider: %w", err)
 	}
 
-	fileStorage, err := storage.NewLocalStorage(cfg.Upload.Dir, cfg.Upload.MaxFileSize)
+	fileStorage, err := newFileStorage(setupContext, cfg)
 	if err != nil {
 		closeDependencies(pool, redisConnection)
 		return nil, fmt.Errorf("initialize file storage: %w", err)
@@ -108,13 +109,16 @@ func New() (*App, error) {
 		},
 		cfg.Upload.Dir,
 		transporthttp.Routes{
-			Register:   handlers.user.Register,
-			Login:      handlers.user.Login,
-			Me:         handlers.user.Me,
-			CreateItem: handlers.item.Create,
-			ListItems:  handlers.item.List,
-			GetItem:    handlers.item.GetByID,
-			ListWishes: handlers.wish.List,
+			Register:     handlers.user.Register,
+			Login:        handlers.user.Login,
+			Me:           handlers.user.Me,
+			CreateItem:   handlers.item.Create,
+			ListItems:    handlers.item.List,
+			GetItem:      handlers.item.GetByID,
+			AddPhotos:    handlers.item.AddPhotos,
+			ReplacePhoto: handlers.item.ReplacePhoto,
+			DeletePhoto:  handlers.item.DeletePhoto,
+			ListWishes:   handlers.wish.List,
 
 			// FIXME Remove this at one point...
 			CreateChain: handlers.chain.CreateChainsForItem,
@@ -183,6 +187,27 @@ func (a *App) Run() error {
 
 	log.Print("application stopped gracefully")
 	return nil
+}
+
+func newFileStorage(ctx context.Context, cfg *config.Config) (item.FileStorage, error) {
+	switch cfg.Storage.Driver {
+	case "local":
+		return storage.NewLocalStorage(cfg.Upload.Dir, cfg.Upload.MaxFileSize)
+	case "s3":
+		return storage.NewS3Storage(ctx, storage.S3Config{
+			Endpoint:      cfg.S3.Endpoint,
+			AccessKey:     cfg.S3.AccessKey,
+			SecretKey:     cfg.S3.SecretKey,
+			Bucket:        cfg.S3.Bucket,
+			Region:        cfg.S3.Region,
+			PublicBaseURL: cfg.S3.PublicBaseURL,
+			UseSSL:        cfg.S3.UseSSL,
+			MaxFileSize:   cfg.Upload.MaxFileSize,
+			EnsureBucket:  cfg.S3.EnsureBucket,
+		})
+	default:
+		return nil, fmt.Errorf("unsupported storage driver %q", cfg.Storage.Driver)
+	}
 }
 
 func newRepositories(pool *pgxpool.Pool) repositories {

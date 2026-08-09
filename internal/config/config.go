@@ -19,6 +19,8 @@ type Config struct {
 	Redis     RedisConfig     `envconfig:"REDIS"`
 	JWT       JWTConfig       `envconfig:"JWT"`
 	Upload    UploadConfig    `envconfig:"UPLOAD"`
+	Storage   StorageConfig   `envconfig:"STORAGE"`
+	S3        S3Config        `envconfig:"S3"`
 	Rejection RejectionConfig `envconfig:"REJECTION"`
 }
 
@@ -61,6 +63,23 @@ type UploadConfig struct {
 	MaxItemPhotos int    `envconfig:"MAX_ITEM_PHOTOS" default:"5"`
 }
 
+// StorageConfig selects the photo storage implementation.
+type StorageConfig struct {
+	Driver string `envconfig:"STORAGE_DRIVER" default:"local"`
+}
+
+// S3Config contains S3-compatible object storage settings.
+type S3Config struct {
+	Endpoint      string `envconfig:"S3_ENDPOINT" default:"minio:9000"`
+	PublicBaseURL string `envconfig:"S3_PUBLIC_URL" default:"http://localhost:9000/item-photos"`
+	Bucket        string `envconfig:"S3_BUCKET" default:"item-photos"`
+	AccessKey     string `envconfig:"S3_ACCESS_KEY" default:"minioadmin"`
+	SecretKey     string `envconfig:"S3_SECRET_KEY" default:"minioadmin"`
+	Region        string `envconfig:"S3_REGION" default:"us-east-1"`
+	UseSSL        bool   `envconfig:"S3_USE_SSL" default:"false"`
+	EnsureBucket  bool   `envconfig:"S3_ENSURE_BUCKET" default:"true"`
+}
+
 // RejectionConfig contains temporary item rejection settings.
 type RejectionConfig struct {
 	ItemTTL time.Duration `envconfig:"REJECTED_ITEM_TTL" default:"336h"`
@@ -94,6 +113,13 @@ func (c *Config) validate() error {
 	c.Redis.Addr = strings.TrimSpace(c.Redis.Addr)
 	c.JWT.Secret = strings.TrimSpace(c.JWT.Secret)
 	c.Upload.Dir = strings.TrimSpace(c.Upload.Dir)
+	c.Storage.Driver = strings.ToLower(strings.TrimSpace(c.Storage.Driver))
+	c.S3.Endpoint = strings.TrimSpace(c.S3.Endpoint)
+	c.S3.PublicBaseURL = strings.TrimRight(strings.TrimSpace(c.S3.PublicBaseURL), "/")
+	c.S3.Bucket = strings.TrimSpace(c.S3.Bucket)
+	c.S3.AccessKey = strings.TrimSpace(c.S3.AccessKey)
+	c.S3.SecretKey = strings.TrimSpace(c.S3.SecretKey)
+	c.S3.Region = strings.TrimSpace(c.S3.Region)
 
 	portNumber, err := strconv.Atoi(c.HTTP.Port)
 	if err != nil || portNumber < 1 || portNumber > 65535 {
@@ -137,6 +163,30 @@ func (c *Config) validate() error {
 	}
 	if c.Upload.MaxItemPhotos <= 0 {
 		return fmt.Errorf("config: MAX_ITEM_PHOTOS must be a positive integer")
+	}
+	switch c.Storage.Driver {
+	case "local":
+	case "s3":
+		if c.S3.Endpoint == "" {
+			return fmt.Errorf("config: S3_ENDPOINT must not be empty when STORAGE_DRIVER=s3")
+		}
+		if c.S3.PublicBaseURL == "" {
+			return fmt.Errorf("config: S3_PUBLIC_URL must not be empty when STORAGE_DRIVER=s3")
+		}
+		if c.S3.Bucket == "" {
+			return fmt.Errorf("config: S3_BUCKET must not be empty when STORAGE_DRIVER=s3")
+		}
+		if c.S3.AccessKey == "" {
+			return fmt.Errorf("config: S3_ACCESS_KEY must not be empty when STORAGE_DRIVER=s3")
+		}
+		if c.S3.SecretKey == "" {
+			return fmt.Errorf("config: S3_SECRET_KEY must not be empty when STORAGE_DRIVER=s3")
+		}
+		if c.S3.Region == "" {
+			return fmt.Errorf("config: S3_REGION must not be empty when STORAGE_DRIVER=s3")
+		}
+	default:
+		return fmt.Errorf("config: STORAGE_DRIVER must be one of: local, s3")
 	}
 	if c.Rejection.ItemTTL <= 0 {
 		return fmt.Errorf("config: REJECTED_ITEM_TTL must be a positive duration")

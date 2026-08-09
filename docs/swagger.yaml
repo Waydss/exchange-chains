@@ -177,6 +177,13 @@ definitions:
       error:
         $ref: '#/definitions/httpserver.ErrorDetail'
     type: object
+  item.AddPhotosResponse:
+    properties:
+      photos:
+        items:
+          $ref: '#/definitions/item.PhotoResponse'
+        type: array
+    type: object
   item.CategoryResponse:
     properties:
       id:
@@ -297,6 +304,11 @@ definitions:
         type: integer
       wanted_category:
         $ref: '#/definitions/item.CategoryResponse'
+    type: object
+  item.ReplacePhotoResponse:
+    properties:
+      photo:
+        $ref: '#/definitions/item.PhotoResponse'
     type: object
   item.Status:
     enum:
@@ -966,6 +978,172 @@ paths:
       security:
       - BearerAuth: []
       summary: Получение предмета
+      tags:
+      - items
+  /api/v1/items/{itemId}/photos:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Добавляет фотографии к предмету текущего пользователя с учетом
+        общего лимита фотографий.
+      parameters:
+      - description: ID предмета
+        in: path
+        name: itemId
+        required: true
+        type: integer
+      - collectionFormat: multi
+        description: Фотографии JPEG, PNG или WEBP
+        in: formData
+        items:
+          type: file
+        name: photos
+        required: true
+        type: array
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/item.AddPhotosResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "415":
+          description: Unsupported Media Type
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Добавление фотографий к предмету
+      tags:
+      - items
+  /api/v1/items/{itemId}/photos/{photoId}:
+    delete:
+      description: Удаляет фотографию предмета текущего пользователя из metadata и
+        файлового хранилища.
+      parameters:
+      - description: ID предмета
+        in: path
+        name: itemId
+        required: true
+        type: integer
+      - description: ID фотографии
+        in: path
+        name: photoId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Удаление фотографии предмета
+      tags:
+      - items
+    put:
+      consumes:
+      - multipart/form-data
+      description: Заменяет одну фотографию предмета текущего пользователя, сохраняя
+        ID фотографии.
+      parameters:
+      - description: ID предмета
+        in: path
+        name: itemId
+        required: true
+        type: integer
+      - description: ID фотографии
+        in: path
+        name: photoId
+        required: true
+        type: integer
+      - description: Новая фотография JPEG, PNG или WEBP
+        in: formData
+        name: photo
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/item.ReplacePhotoResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "415":
+          description: Unsupported Media Type
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Замена фотографии предмета
       tags:
       - items
   /api/v1/me:

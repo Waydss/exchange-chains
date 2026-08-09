@@ -37,6 +37,49 @@ func (r *PostgresRepository) GetByID(ctx context.Context, itemID int64) (Details
 	return items[0], nil
 }
 
+// UpdatePhoto replaces the stored object key for one item photo.
+func (r *PostgresRepository) UpdatePhoto(ctx context.Context, itemID, photoID int64, objectKey string) (Photo, error) {
+	const query = `
+		UPDATE item_photos
+		SET object_key = $3
+		WHERE item_id = $1 AND id = $2
+		RETURNING id, item_id, object_key, position, created_at`
+
+	var updated Photo
+	err := r.pool.QueryRow(ctx, query, itemID, photoID, objectKey).Scan(
+		&updated.ID,
+		&updated.ItemID,
+		&updated.ObjectKey,
+		&updated.Position,
+		&updated.CreatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return Photo{}, ErrPhotoNotFound
+		}
+		return Photo{}, fmt.Errorf("update item photo: %w", err)
+	}
+
+	return updated, nil
+}
+
+// DeletePhoto deletes one photo metadata row for an item.
+func (r *PostgresRepository) DeletePhoto(ctx context.Context, itemID, photoID int64) error {
+	const query = `
+		DELETE FROM item_photos
+		WHERE item_id = $1 AND id = $2`
+
+	result, err := r.pool.Exec(ctx, query, itemID, photoID)
+	if err != nil {
+		return fmt.Errorf("delete item photo: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrPhotoNotFound
+	}
+
+	return nil
+}
+
 // WithinTransaction runs all item writes in one PostgreSQL transaction.
 func (r *PostgresRepository) WithinTransaction(ctx context.Context, fn func(Transaction) error) error {
 	tx, err := r.pool.Begin(ctx)
@@ -123,13 +166,13 @@ func (t *postgresTransaction) CreatePhotos(
 	}
 
 	const query = `
-		INSERT INTO item_photos (item_id, url, position)
+		INSERT INTO item_photos (item_id, object_key, position)
 		VALUES ($1, $2, $3)
-		RETURNING id, item_id, url, position, created_at`
+		RETURNING id, item_id, object_key, position, created_at`
 
 	batch := &pgx.Batch{}
 	for _, photo := range photos {
-		batch.Queue(query, itemID, photo.URL, photo.Position)
+		batch.Queue(query, itemID, photo.ObjectKey, photo.Position)
 	}
 
 	results := t.tx.SendBatch(ctx, batch)
@@ -138,7 +181,7 @@ func (t *postgresTransaction) CreatePhotos(
 		if err := results.QueryRow().Scan(
 			&created.ID,
 			&created.ItemID,
-			&created.URL,
+			&created.ObjectKey,
 			&created.Position,
 			&created.CreatedAt,
 		); err != nil {
@@ -250,7 +293,7 @@ func (r *PostgresRepository) readItems(ctx context.Context, where string, args .
 	}
 
 	const photoQuery = `
-		SELECT id, item_id, url, position, created_at
+		SELECT id, item_id, object_key, position, created_at
 		FROM item_photos
 		WHERE item_id = ANY($1)
 		ORDER BY item_id, position, id`
@@ -266,7 +309,7 @@ func (r *PostgresRepository) readItems(ctx context.Context, where string, args .
 		if err := photoRows.Scan(
 			&photo.ID,
 			&photo.ItemID,
-			&photo.URL,
+			&photo.ObjectKey,
 			&photo.Position,
 			&photo.CreatedAt,
 		); err != nil {

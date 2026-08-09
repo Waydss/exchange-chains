@@ -86,7 +86,7 @@ CREATE INDEX items_status_idx ON items (status);
 CREATE TABLE item_photos (
     id BIGSERIAL PRIMARY KEY,
     item_id BIGINT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-    url TEXT NOT NULL,
+    object_key TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

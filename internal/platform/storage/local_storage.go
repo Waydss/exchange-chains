@@ -1,14 +1,11 @@
 package storage
 
 import (
-	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -16,17 +13,6 @@ import (
 
 	"github.com/L-ka080/DDB-6-case/internal/item"
 )
-
-const (
-	mimeProbeSize      = 512
-	randomFilenameSize = 16
-)
-
-var allowedImageTypes = map[string]string{
-	"image/jpeg": ".jpg",
-	"image/png":  ".png",
-	"image/webp": ".webp",
-}
 
 // LocalStorage stores item images below a configured local directory.
 type LocalStorage struct {
@@ -61,17 +47,13 @@ func (s *LocalStorage) SaveItemPhotos(
 
 	for _, upload := range photos {
 		if err := ctx.Err(); err != nil {
-			_ = os.RemoveAll(itemDirectory)
+			_ = s.DeletePhotos(context.Background(), storedObjectKeys(stored))
 			return nil, err
-		}
-		if upload.Size > s.maxFileSize {
-			_ = os.RemoveAll(itemDirectory)
-			return nil, item.ErrImageTooLarge
 		}
 
 		storedPhoto, err := s.savePhoto(itemDirectory, itemID, upload)
 		if err != nil {
-			_ = os.RemoveAll(itemDirectory)
+			_ = s.DeletePhotos(context.Background(), storedObjectKeys(stored))
 			return nil, err
 		}
 		stored = append(stored, storedPhoto)
@@ -92,21 +74,34 @@ func (s *LocalStorage) DeleteItemPhotos(_ context.Context, itemID int64) error {
 	return nil
 }
 
+// DeletePhotos removes selected locally stored images.
+func (s *LocalStorage) DeletePhotos(_ context.Context, objectKeys []string) error {
+	for _, objectKey := range objectKeys {
+		if objectKey == "" {
+			continue
+		}
+		filePath := filepath.Join(s.baseDir, filepath.FromSlash(objectKey))
+		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("%w: remove uploaded image", item.ErrFileStorage)
+		}
+	}
+
+	return nil
+}
+
+// PublicURL converts a stored object key into the route served by the API.
+func (s *LocalStorage) PublicURL(objectKey string) string {
+	return path.Join("/uploads", objectKey)
+}
+
 func (s *LocalStorage) savePhoto(
 	itemDirectory string,
 	itemID int64,
 	upload item.PhotoUpload,
 ) (item.StoredPhoto, error) {
-	reader := bufio.NewReader(upload.Reader)
-	header, err := reader.Peek(mimeProbeSize)
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
-		return item.StoredPhoto{}, fmt.Errorf("%w: inspect uploaded image", item.ErrFileStorage)
-	}
-
-	contentType := http.DetectContentType(header)
-	extension, supported := allowedImageTypes[contentType]
-	if !supported {
-		return item.StoredPhoto{}, item.ErrUnsupportedImageType
+	reader, _, extension, err := prepareImageUpload(upload, s.maxFileSize)
+	if err != nil {
+		return item.StoredPhoto{}, err
 	}
 
 	filename, err := randomFilename(extension)
@@ -131,7 +126,7 @@ func (s *LocalStorage) savePhoto(
 	}
 
 	return item.StoredPhoto{
-		URL: path.Join("/uploads/items", strconv.FormatInt(itemID, 10), filename),
+		ObjectKey: path.Join("items", strconv.FormatInt(itemID, 10), filename),
 	}, nil
 }
 
@@ -146,4 +141,14 @@ func randomFilename(extension string) (string, error) {
 	}
 
 	return hex.EncodeToString(randomBytes) + extension, nil
+}
+
+func storedObjectKeys(photos []item.StoredPhoto) []string {
+	objectKeys := make([]string, 0, len(photos))
+	for _, photo := range photos {
+		if photo.ObjectKey != "" {
+			objectKeys = append(objectKeys, photo.ObjectKey)
+		}
+	}
+	return objectKeys
 }

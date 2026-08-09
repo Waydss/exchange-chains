@@ -21,6 +21,9 @@ type HandlerService interface {
 	Create(ctx context.Context, input CreateInput) (CreateResponse, error)
 	ListByUserID(ctx context.Context, userID int64) ([]ReadResponse, error)
 	GetByID(ctx context.Context, itemID int64) (ReadResponse, error)
+	AddPhotos(ctx context.Context, input AddPhotosInput) (AddPhotosResult, error)
+	ReplacePhoto(ctx context.Context, input ReplacePhotoInput) (ReplacePhotoResult, error)
+	DeletePhoto(ctx context.Context, userID, itemID, photoID int64) error
 }
 
 // Handler exposes item creation over HTTP.
@@ -199,10 +202,228 @@ func (h *Handler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// AddPhotos godoc
+//
+// @Summary Добавление фотографий к предмету
+// @Description Добавляет фотографии к предмету текущего пользователя с учетом общего лимита фотографий.
+// @Tags items
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param itemId path integer true "ID предмета"
+// @Param photos formData []file true "Фотографии JPEG, PNG или WEBP" collectionFormat(multi)
+// @Success 201 {object} AddPhotosResponse
+// @Failure 400 {object} httpserver.ErrorResponse
+// @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 403 {object} httpserver.ErrorResponse
+// @Failure 404 {object} httpserver.ErrorResponse
+// @Failure 413 {object} httpserver.ErrorResponse
+// @Failure 415 {object} httpserver.ErrorResponse
+// @Failure 500 {object} httpserver.ErrorResponse
+// @Router /api/v1/items/{itemId}/photos [post]
+func (h *Handler) AddPhotos(c *gin.Context) {
+	userID, ok := authenticatedUserID(c)
+	if !ok {
+		httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	itemID, err := strconv.ParseInt(c.Param("itemId"), 10, 64)
+	if err != nil || itemID <= 0 {
+		httpserver.WriteError(c, http.StatusBadRequest, "validation_error", "itemId must be a positive integer")
+		return
+	}
+
+	photoUploads, closePhotos, ok := h.parsePhotoUploads(c, true)
+	if !ok {
+		return
+	}
+	defer closePhotos()
+
+	result, err := h.service.AddPhotos(c.Request.Context(), AddPhotosInput{
+		UserID: userID,
+		ItemID: itemID,
+		Photos: photoUploads,
+	})
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, toAddPhotosResponse(result))
+}
+
+// ReplacePhoto godoc
+//
+// @Summary Замена фотографии предмета
+// @Description Заменяет одну фотографию предмета текущего пользователя, сохраняя ID фотографии.
+// @Tags items
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param itemId path integer true "ID предмета"
+// @Param photoId path integer true "ID фотографии"
+// @Param photo formData file true "Новая фотография JPEG, PNG или WEBP"
+// @Success 200 {object} ReplacePhotoResponse
+// @Failure 400 {object} httpserver.ErrorResponse
+// @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 403 {object} httpserver.ErrorResponse
+// @Failure 404 {object} httpserver.ErrorResponse
+// @Failure 413 {object} httpserver.ErrorResponse
+// @Failure 415 {object} httpserver.ErrorResponse
+// @Failure 500 {object} httpserver.ErrorResponse
+// @Router /api/v1/items/{itemId}/photos/{photoId} [put]
+func (h *Handler) ReplacePhoto(c *gin.Context) {
+	userID, ok := authenticatedUserID(c)
+	if !ok {
+		httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	itemID, photoID, ok := parseItemPhotoIDs(c)
+	if !ok {
+		return
+	}
+
+	photoUpload, closePhoto, ok := h.parseSinglePhotoUpload(c)
+	if !ok {
+		return
+	}
+	defer closePhoto()
+
+	result, err := h.service.ReplacePhoto(c.Request.Context(), ReplacePhotoInput{
+		UserID:  userID,
+		ItemID:  itemID,
+		PhotoID: photoID,
+		Photo:   photoUpload,
+	})
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, toReplacePhotoResponse(result))
+}
+
+// DeletePhoto godoc
+//
+// @Summary Удаление фотографии предмета
+// @Description Удаляет фотографию предмета текущего пользователя из metadata и файлового хранилища.
+// @Tags items
+// @Produce json
+// @Security BearerAuth
+// @Param itemId path integer true "ID предмета"
+// @Param photoId path integer true "ID фотографии"
+// @Success 204
+// @Failure 400 {object} httpserver.ErrorResponse
+// @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 403 {object} httpserver.ErrorResponse
+// @Failure 404 {object} httpserver.ErrorResponse
+// @Failure 500 {object} httpserver.ErrorResponse
+// @Router /api/v1/items/{itemId}/photos/{photoId} [delete]
+func (h *Handler) DeletePhoto(c *gin.Context) {
+	userID, ok := authenticatedUserID(c)
+	if !ok {
+		httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	itemID, photoID, ok := parseItemPhotoIDs(c)
+	if !ok {
+		return
+	}
+
+	if err := h.service.DeletePhoto(c.Request.Context(), userID, itemID, photoID); err != nil {
+		handleError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func parseItemPhotoIDs(c *gin.Context) (int64, int64, bool) {
+	itemID, err := strconv.ParseInt(c.Param("itemId"), 10, 64)
+	if err != nil || itemID <= 0 {
+		httpserver.WriteError(c, http.StatusBadRequest, "validation_error", "itemId must be a positive integer")
+		return 0, 0, false
+	}
+	photoID, err := strconv.ParseInt(c.Param("photoId"), 10, 64)
+	if err != nil || photoID <= 0 {
+		httpserver.WriteError(c, http.StatusBadRequest, "validation_error", "photoId must be a positive integer")
+		return 0, 0, false
+	}
+
+	return itemID, photoID, true
+}
+
 func authenticatedUserID(c *gin.Context) (int64, bool) {
 	value, ok := c.Get(middleware.UserIDContextKey)
 	userID, valid := value.(int64)
 	return userID, ok && valid && userID > 0
+}
+
+func (h *Handler) parsePhotoUploads(c *gin.Context, requirePhotos bool) ([]PhotoUpload, func(), bool) {
+	return h.parsePhotoUploadsFromField(c, "photos", requirePhotos, h.maxPhotos)
+}
+
+func (h *Handler) parseSinglePhotoUpload(c *gin.Context) (PhotoUpload, func(), bool) {
+	photoUploads, closePhotos, ok := h.parsePhotoUploadsFromField(c, "photo", true, 1)
+	if !ok {
+		return PhotoUpload{}, nil, false
+	}
+	return photoUploads[0], closePhotos, true
+}
+
+func (h *Handler) parsePhotoUploadsFromField(
+	c *gin.Context,
+	field string,
+	requirePhotos bool,
+	maxPhotos int,
+) ([]PhotoUpload, func(), bool) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.maxRequestSize)
+	if err := c.Request.ParseMultipartForm(multipartMemory); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			httpserver.WriteError(c, http.StatusRequestEntityTooLarge, "image_too_large", "multipart request is too large")
+			return nil, nil, false
+		}
+		httpserver.WriteError(c, http.StatusBadRequest, "validation_error", "request must be valid multipart/form-data")
+		return nil, nil, false
+	}
+	cleanupForm := func() {
+		_ = c.Request.MultipartForm.RemoveAll()
+	}
+
+	photoHeaders := c.Request.MultipartForm.File[field]
+	if requirePhotos && len(photoHeaders) == 0 {
+		cleanupForm()
+		httpserver.WriteError(c, http.StatusBadRequest, "validation_error", field+" is required")
+		return nil, nil, false
+	}
+	if len(photoHeaders) > maxPhotos {
+		cleanupForm()
+		httpserver.WriteError(c, http.StatusRequestEntityTooLarge, "too_many_photos", "too many photos")
+		return nil, nil, false
+	}
+	for _, header := range photoHeaders {
+		if header.Size > h.maxFileSize {
+			cleanupForm()
+			httpserver.WriteError(c, http.StatusRequestEntityTooLarge, "image_too_large", "image is too large")
+			return nil, nil, false
+		}
+	}
+
+	photoUploads, closePhotos, err := openPhotos(photoHeaders)
+	if err != nil {
+		cleanupForm()
+		httpserver.WriteError(c, http.StatusInternalServerError, "file_storage_error", "could not read uploaded photos")
+		return nil, nil, false
+	}
+
+	return photoUploads, func() {
+		closePhotos()
+		cleanupForm()
+	}, true
 }
 
 func parsePrice(values map[string][]string, field string) (int64, error) {
@@ -246,6 +467,22 @@ func openPhotos(headers []*multipart.FileHeader) ([]PhotoUpload, func(), error) 
 	return uploads, closeFiles, nil
 }
 
+func toAddPhotosResponse(result AddPhotosResult) AddPhotosResponse {
+	photos := make([]PhotoResponse, len(result.Photos))
+	for index, photo := range result.Photos {
+		photos[index] = toPhotoResponse(photo)
+	}
+	return AddPhotosResponse{Photos: photos}
+}
+
+func toReplacePhotoResponse(result ReplacePhotoResult) ReplacePhotoResponse {
+	return ReplacePhotoResponse{Photo: toPhotoResponse(result.Photo)}
+}
+
+func toPhotoResponse(photo PhotoResult) PhotoResponse {
+	return PhotoResponse{ID: photo.ID, URL: photo.URL}
+}
+
 func handleError(c *gin.Context, err error) {
 	var validationError *ValidationError
 	switch {
@@ -253,6 +490,10 @@ func handleError(c *gin.Context, err error) {
 		httpserver.WriteError(c, http.StatusBadRequest, "validation_error", validationError.Message)
 	case errors.Is(err, ErrNotFound):
 		httpserver.WriteError(c, http.StatusNotFound, "item_not_found", "item not found")
+	case errors.Is(err, ErrPhotoNotFound):
+		httpserver.WriteError(c, http.StatusNotFound, "photo_not_found", "photo not found")
+	case errors.Is(err, ErrForbidden):
+		httpserver.WriteError(c, http.StatusForbidden, "forbidden", "item belongs to another user")
 	case errors.Is(err, ErrCategoryNotFound):
 		httpserver.WriteError(c, http.StatusNotFound, "category_not_found", "category not found")
 	case errors.Is(err, ErrWantedCategoryNotFound):
