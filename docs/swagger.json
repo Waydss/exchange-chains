@@ -771,6 +771,110 @@
                 }
             }
         },
+        "/api/v1/ratings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает средний рейтинг, количество оценок и все записи, где пользователь является получателем оценки.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Получение рейтинга и истории оценок текущего пользователя",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.UserRatingsDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Записывает оценку текущего пользователя для другого участника закрытого бартера и обновляет средний публичный рейтинг получателя. Каждый участник бартера может оценить другого только один раз.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Создание записи о выставлении рейтинга от одного пользователя к другому",
+                "parameters": [
+                    {
+                        "description": "Оценка пользователя и идентификатор бартера",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/user.UserRatingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/user.TotalUserRatingDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/wishes": {
             "get": {
                 "security": [
@@ -1383,6 +1487,70 @@
                     "type": "string",
                     "minLength": 8,
                     "example": "example-password"
+                }
+            }
+        },
+        "user.TotalUserRatingDTO": {
+            "type": "object",
+            "properties": {
+                "total_scores": {
+                    "type": "integer"
+                },
+                "user_rating": {
+                    "type": "number"
+                }
+            }
+        },
+        "user.UserRatingEntry": {
+            "type": "object",
+            "properties": {
+                "barter_id": {
+                    "type": "integer"
+                },
+                "public_rating": {
+                    "type": "number"
+                },
+                "public_user": {
+                    "$ref": "#/definitions/user.PublicUser"
+                }
+            }
+        },
+        "user.UserRatingRequest": {
+            "type": "object",
+            "required": [
+                "barter_id",
+                "rating",
+                "to_user"
+            ],
+            "properties": {
+                "barter_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "rating": {
+                    "type": "number",
+                    "example": 5
+                },
+                "to_user": {
+                    "type": "integer",
+                    "example": 2
+                }
+            }
+        },
+        "user.UserRatingsDTO": {
+            "type": "object",
+            "properties": {
+                "ratings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/user.UserRatingEntry"
+                    }
+                },
+                "total_scores": {
+                    "type": "integer"
+                },
+                "user_rating": {
+                    "type": "number"
                 }
             }
         },

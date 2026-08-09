@@ -134,6 +134,94 @@ func (s *Service) GetUserCandidateBase(ctx context.Context, userId int64) (publi
 	return foundUser.PublicRating, foundUser.ShadowRating, nil
 }
 
+// Called by separate handler, when one of the users decided to leave a rating after closed barter between each other.
+//
+// Each user in the barter can leave a rating for other
+func (s *Service) UpdatePublicRating(ctx context.Context, fromId int64, toId int64, rating float64, barterId int64) (TotalUserRatingDTO, error) {
+	if rating < 0 || rating > 5 {
+		return TotalUserRatingDTO{}, &ValidationError{Message: "rating must be between 0 and 5"}
+	}
+
+	if fromId <= 0 || toId <= 0 {
+		return TotalUserRatingDTO{}, &ValidationError{Message: "from and to user IDs must be positive"}
+	}
+
+	if _, err := s.repository.GetByID(ctx, fromId); err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return TotalUserRatingDTO{}, fmt.Errorf("from user: %w", err)
+		}
+		return TotalUserRatingDTO{}, fmt.Errorf("load from user: %w", err)
+	}
+
+	if _, err := s.repository.GetByID(ctx, toId); err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return TotalUserRatingDTO{}, fmt.Errorf("to user: %w", err)
+		}
+		return TotalUserRatingDTO{}, fmt.Errorf("load to user: %w", err)
+	}
+
+	if err := s.repository.ValidateBarterParticipants(ctx, barterId, fromId, toId); err != nil {
+		return TotalUserRatingDTO{}, err
+	}
+
+	average, total, err := s.repository.UpdatePublicRating(ctx, fromId, toId, rating, barterId)
+	if err != nil {
+		return TotalUserRatingDTO{}, fmt.Errorf("update public rating: %w", err)
+	}
+
+	return TotalUserRatingDTO{
+		UserRating:  average,
+		TotalScores: total,
+	}, nil
+}
+
+// GetUserRatings returns the summary of the current public rating for the user,
+// together with every rating record where the user is the recipient (to_id).
+func (s *Service) GetUserRatings(ctx context.Context, userId int64) (UserRatingsDTO, error) {
+	if userId <= 0 {
+		return UserRatingsDTO{}, &ValidationError{Message: "user ID must be positive"}
+	}
+
+	ratings, err := s.repository.GetUserRatings(ctx, userId)
+	if err != nil {
+		return UserRatingsDTO{}, fmt.Errorf("load user ratings: %w", err)
+	}
+
+	total := len(ratings)
+	entries := make([]UserRatingEntry, 0, total)
+	var sum float64
+	for _, rating := range ratings {
+		fromUser, err := s.repository.GetByID(ctx, rating.FromId)
+		if err != nil {
+			return UserRatingsDTO{}, fmt.Errorf("load rater profile: %w", err)
+		}
+
+		sum += rating.PublicRating
+		entries = append(entries, UserRatingEntry{
+			User:     toPublicUser(fromUser),
+			Rating:   rating.PublicRating,
+			BarterId: rating.BarterId,
+		})
+	}
+
+	var average float64
+	if total > 0 {
+		average = sum / float64(total)
+	}
+
+	return UserRatingsDTO{
+		UserRating:  average,
+		TotalScores: total,
+		Ratings:     entries,
+	}, nil
+}
+
+func (s *Service) UpdateShadowRating(ctx context.Context, userId int64, reasonString string) error {
+	s.repository.UpdateShadowRating(ctx, userId, reasonString)
+
+	return fmt.Errorf("[user/service] Not implemented")
+}
+
 func (s *Service) authResult(account User) (AuthResult, error) {
 	accessToken, err := s.tokenProvider.Generate(account.ID, account.Login)
 	if err != nil {

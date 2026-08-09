@@ -26,8 +26,11 @@ type Routes struct {
 
 	GetChainsByUser gin.HandlerFunc
 	GetChainsByItem gin.HandlerFunc
-	GetChainByID    gin.HandlerFunc
 
+	UpdatePublicRating gin.HandlerFunc
+	GetUserRatings     gin.HandlerFunc
+
+	GetChainByID   gin.HandlerFunc
 	AcceptChain    gin.HandlerFunc
 	DeclineChain   gin.HandlerFunc
 	AuthMiddleware gin.HandlerFunc
@@ -72,6 +75,8 @@ func NewRouter(
 	protected.GET("/chains/:chainId", routes.GetChainByID)
 	protected.POST("/chains/:chainId/accept", routes.AcceptChain)
 	protected.POST("/chains/:chainId/decline", routes.DeclineChain)
+	protected.POST("/ratings", routes.UpdatePublicRating)
+	protected.GET("/ratings", routes.GetUserRatings)
 
 	router.NoRoute(func(c *gin.Context) {
 		httpserver.WriteError(c, stdhttp.StatusNotFound, "not_found", "resource not found")

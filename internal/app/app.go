@@ -121,8 +121,11 @@ func New() (*App, error) {
 
 			GetChainsByUser: handlers.chain.GetChainsByUser,
 			GetChainsByItem: handlers.chain.GetChainsByItem,
-			GetChainByID:    handlers.chain.GetChainByID,
 
+			UpdatePublicRating: handlers.user.UpdatePublicRating,
+			GetUserRatings:     handlers.user.GetUserRatings,
+
+			GetChainByID:   handlers.chain.GetChainByID,
 			AcceptChain:    handlers.chain.AcceptChain,
 			DeclineChain:   handlers.chain.DeclineChain,
 			AuthMiddleware: middleware.Auth(jwtProvider),

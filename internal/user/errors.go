@@ -9,6 +9,12 @@ var (
 	ErrLoginAlreadyExists = errors.New("login already exists")
 	// ErrInvalidCredentials intentionally covers both an unknown login and a wrong password.
 	ErrInvalidCredentials = errors.New("invalid credentials")
+	// ErrBarterNotFound indicates that a barter does not exist.
+	ErrBarterNotFound = errors.New("barter not found")
+	// ErrBarterUsersMismatch indicates that the users are not both participants of the barter.
+	ErrBarterUsersMismatch = errors.New("users do not belong to the barter")
+	// ErrRatingAlreadyExists indicates that a rating record for the same from/to/barter already exists.
+	ErrRatingAlreadyExists = errors.New("rating already exists")
 )
 
 // ValidationError is a client-safe input validation failure.

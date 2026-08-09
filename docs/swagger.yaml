@@ -396,6 +396,49 @@ definitions:
     - name
     - password
     type: object
+  user.TotalUserRatingDTO:
+    properties:
+      total_scores:
+        type: integer
+      user_rating:
+        type: number
+    type: object
+  user.UserRatingEntry:
+    properties:
+      barter_id:
+        type: integer
+      public_rating:
+        type: number
+      public_user:
+        $ref: '#/definitions/user.PublicUser'
+    type: object
+  user.UserRatingRequest:
+    properties:
+      barter_id:
+        example: 1
+        type: integer
+      rating:
+        example: 5
+        type: number
+      to_user:
+        example: 2
+        type: integer
+    required:
+    - barter_id
+    - rating
+    - to_user
+    type: object
+  user.UserRatingsDTO:
+    properties:
+      ratings:
+        items:
+          $ref: '#/definitions/user.UserRatingEntry'
+        type: array
+      total_scores:
+        type: integer
+      user_rating:
+        type: number
+    type: object
   wish.CategoryResponse:
     properties:
       id:
@@ -950,6 +993,75 @@ paths:
       security:
       - BearerAuth: []
       summary: Профиль текущего пользователя
+      tags:
+      - users
+  /api/v1/ratings:
+    get:
+      description: Возвращает средний рейтинг, количество оценок и все записи, где
+        пользователь является получателем оценки.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserRatingsDTO'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Получение рейтинга и истории оценок текущего пользователя
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      description: Записывает оценку текущего пользователя для другого участника закрытого
+        бартера и обновляет средний публичный рейтинг получателя. Каждый участник
+        бартера может оценить другого только один раз.
+      parameters:
+      - description: Оценка пользователя и идентификатор бартера
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.UserRatingRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/user.TotalUserRatingDTO'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpserver.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Создание записи о выставлении рейтинга от одного пользователя к другому
       tags:
       - users
   /api/v1/wishes:

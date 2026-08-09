@@ -60,6 +60,22 @@ func (r *fakeRepository) GetByID(_ context.Context, id int64) (user.User, error)
 	return foundUser, nil
 }
 
+func (r *fakeRepository) GetUserRatings(_ context.Context, _ int64) ([]user.UserRating, error) {
+	return nil, nil
+}
+
+func (r *fakeRepository) ValidateBarterParticipants(_ context.Context, _, _, _ int64) error {
+	return nil
+}
+
+func (r *fakeRepository) UpdatePublicRating(_ context.Context, _, _ int64, _ float64, _ int64) (float64, int, error) {
+	return 0, 0, nil
+}
+
+func (r *fakeRepository) UpdateShadowRating(_ context.Context, _ int64, _ string) error {
+	return nil
+}
+
 type fakeTokenProvider struct{}
 
 func (fakeTokenProvider) Generate(_ int64, _ string) (string, error) {

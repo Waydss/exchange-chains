@@ -20,6 +20,11 @@ type handlerServiceStub struct {
 	loginError     error
 	user           PublicUser
 	getByIDError   error
+
+	updatePublicRatingResult TotalUserRatingDTO
+	updatePublicRatingError  error
+	getUserRatingsResult     UserRatingsDTO
+	getUserRatingsError      error
 }
 
 func (s handlerServiceStub) Register(context.Context, RegisterInput) (AuthResult, error) {
@@ -32,6 +37,14 @@ func (s handlerServiceStub) Login(context.Context, LoginInput) (AuthResult, erro
 
 func (s handlerServiceStub) GetByID(context.Context, int64) (PublicUser, error) {
 	return s.user, s.getByIDError
+}
+
+func (s handlerServiceStub) UpdatePublicRating(context.Context, int64, int64, float64, int64) (TotalUserRatingDTO, error) {
+	return s.updatePublicRatingResult, s.updatePublicRatingError
+}
+
+func (s handlerServiceStub) GetUserRatings(context.Context, int64) (UserRatingsDTO, error) {
+	return s.getUserRatingsResult, s.getUserRatingsError
 }
 
 func TestRegisterHandler(t *testing.T) {
