@@ -1,0 +1,162 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  padding: 36px 120px 120px;
+}
+
+.hero {
+  display: flex;
+  gap: 32px;
+}
+
+.photo {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 300px;
+  height: 240px;
+  background: #f2f1ef;
+  border-radius: var(--radius-md);
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
+
+.photo-placeholder {
+  font-size: 12px;
+  font-weight: 600;
+  color: #a9a7a1;
+}
+
+.hero-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+
+.subtitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #8c8c8c;
+}
+
+.status {
+  align-self: flex-start;
+  padding: 6px 14px;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+}
+
+.wish-card {
+  display: flex;
+  flex: none;
+  width: 220px;
+  height: fit-content;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  background: #fff;
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-md);
+}
+
+.wish-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #0081f6;
+  letter-spacing: 0.3px;
+}
+
+.wish-category {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.wish-price {
+  font-size: 14px;
+  font-weight: 600;
+  color: #8c8c8c;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.section-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+  border-radius: var(--radius-md);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 600px;
+  padding: 64px 24px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  font-size: 32px;
+  font-weight: 800;
+  color: #8c8c8c;
+  background: #f2f1ef;
+  border-radius: 50%;
+}
+
+.empty-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+
+.empty-text {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.55;
+  color: #5c5c5c;
+}
