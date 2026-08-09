@@ -11,6 +11,23 @@ CREATE TABLE users (
     CONSTRAINT users_login_not_empty
         CHECK (LENGTH(TRIM(login)) > 0)
 );
+
+CREATE TABLE user_ratings (
+    id NOT NULL BIGSERIAL PRIMARY KEY,
+    from_id BIGINT NOT NULL REFERENCES users(id),
+    to_id BIGINT NOT NULL REFERENCES users(id),
+    barter_id BIGINT NOT NULL REFERENCES chain_barters(id),
+    public_rating NUMERIC(3, 2),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+);
+
+CREATE TABLE user_shadow_registry (
+    id BIGSERIAL PRIMARY KEY, 
+    user_id BIGINT
+    reason TEXT
+    amount INTEGER
+);
+
 CREATE TABLE categories (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL,

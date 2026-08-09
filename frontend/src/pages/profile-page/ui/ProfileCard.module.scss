@@ -1,0 +1,72 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 400px;
+  flex: none;
+  height: fit-content;
+  padding: 28px;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+  border-radius: var(--radius-lg);
+}
+
+.avatar {
+  background: var(--color-secondary);
+}
+
+.name {
+  margin-top: 10px;
+  font-size: 24px;
+  font-weight: 700;
+  color: black;
+}
+
+.since {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-font-light);
+}
+
+.rating {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.stars {
+  font-size: 17px;
+  color: #ffb121;
+  letter-spacing: 1px;
+}
+
+.rating-value {
+  font-size: 17px;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+
+.stats {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  width: 100%;
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid #e6e6e6;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8c8c8c;
+}

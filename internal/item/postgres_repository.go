@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/L-ka080/DDB-6-case/internal/wish"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -16,6 +17,24 @@ type PostgresRepository struct {
 // NewPostgresRepository creates a PostgreSQL item repository.
 func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{pool: pool}
+}
+
+// ListByUserID returns every item owned by a user, newest first.
+func (r *PostgresRepository) ListByUserID(ctx context.Context, userID int64) ([]Details, error) {
+	return r.readItems(ctx, "WHERE i.user_id = $1", userID)
+}
+
+// GetByID returns one item with category and photo metadata.
+func (r *PostgresRepository) GetByID(ctx context.Context, itemID int64) (Details, error) {
+	items, err := r.readItems(ctx, "WHERE i.id = $1", itemID)
+	if err != nil {
+		return Details{}, err
+	}
+	if len(items) == 0 {
+		return Details{}, ErrNotFound
+	}
+
+	return items[0], nil
 }
 
 // WithinTransaction runs all item writes in one PostgreSQL transaction.
@@ -55,7 +74,7 @@ func (t *postgresTransaction) CreateItem(ctx context.Context, params CreateItemP
 			wanted_category_id,
 			status
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'searching')
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, user_id, title, description, condition, category_id,
 			price_min, price_max, wanted_category_id, status, created_at, updated_at`
 
@@ -71,6 +90,7 @@ func (t *postgresTransaction) CreateItem(ctx context.Context, params CreateItemP
 		params.PriceMin,
 		params.PriceMax,
 		params.WantedCategoryID,
+		StatusSearching,
 	).Scan(
 		&created.ID,
 		&created.UserID,
@@ -132,4 +152,134 @@ func (t *postgresTransaction) CreatePhotos(
 	}
 
 	return createdPhotos, nil
+}
+
+// CreateWish inserts the wanted item associated with the current create request.
+func (t *postgresTransaction) CreateWish(ctx context.Context, params CreateWishParams) (wish.WishedItem, error) {
+	const query = `
+		INSERT INTO wishes (user_id, category_id, price_min, price_max, title_keywords)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, user_id, category_id, price_min, price_max, title_keywords, created_at, updated_at`
+
+	var created wish.WishedItem
+	err := t.tx.QueryRow(
+		ctx,
+		query,
+		params.UserID,
+		params.CategoryID,
+		params.PriceMin,
+		params.PriceMax,
+		params.TitleKeywords,
+	).Scan(
+		&created.ID,
+		&created.UserID,
+		&created.CategoryID,
+		&created.PriceMin,
+		&created.PriceMax,
+		&created.TitleKeywords,
+		&created.CreatedAt,
+		&created.UpdatedAt,
+	)
+	if err != nil {
+		return wish.WishedItem{}, fmt.Errorf("insert wish: %w", err)
+	}
+
+	return created, nil
+}
+
+func (r *PostgresRepository) readItems(ctx context.Context, where string, args ...any) ([]Details, error) {
+	query := `
+		SELECT i.id, i.user_id, i.title, i.description, i.condition,
+		       i.category_id, i.price_min, i.price_max, i.wanted_category_id,
+		       i.status, i.created_at, i.updated_at,
+		       c.id, c.name, c.created_at,
+		       wc.id, wc.name, wc.created_at
+		FROM items AS i
+		JOIN categories AS c ON c.id = i.category_id
+		JOIN categories AS wc ON wc.id = i.wanted_category_id`
+	if where != "" {
+		query += " " + where
+	}
+	query += " ORDER BY i.created_at DESC, i.id DESC"
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query items: %w", err)
+	}
+
+	items := make([]Details, 0)
+	itemIndex := make(map[int64]int)
+	itemIDs := make([]int64, 0)
+	for rows.Next() {
+		var found Details
+		if err := rows.Scan(
+			&found.Item.ID,
+			&found.Item.UserID,
+			&found.Item.Title,
+			&found.Item.Description,
+			&found.Item.Condition,
+			&found.Item.CategoryID,
+			&found.Item.PriceMin,
+			&found.Item.PriceMax,
+			&found.Item.WantedCategoryID,
+			&found.Item.Status,
+			&found.Item.CreatedAt,
+			&found.Item.UpdatedAt,
+			&found.Category.ID,
+			&found.Category.Name,
+			&found.Category.CreatedAt,
+			&found.WantedCategory.ID,
+			&found.WantedCategory.Name,
+			&found.WantedCategory.CreatedAt,
+		); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan item: %w", err)
+		}
+		found.Photos = make([]Photo, 0)
+		itemIndex[found.Item.ID] = len(items)
+		itemIDs = append(itemIDs, found.Item.ID)
+		items = append(items, found)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("iterate items: %w", err)
+	}
+	rows.Close()
+	if len(items) == 0 {
+		return items, nil
+	}
+
+	const photoQuery = `
+		SELECT id, item_id, url, position, created_at
+		FROM item_photos
+		WHERE item_id = ANY($1)
+		ORDER BY item_id, position, id`
+
+	photoRows, err := r.pool.Query(ctx, photoQuery, itemIDs)
+	if err != nil {
+		return nil, fmt.Errorf("query item photos: %w", err)
+	}
+	defer photoRows.Close()
+
+	for photoRows.Next() {
+		var photo Photo
+		if err := photoRows.Scan(
+			&photo.ID,
+			&photo.ItemID,
+			&photo.URL,
+			&photo.Position,
+			&photo.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan item photo: %w", err)
+		}
+		index, ok := itemIndex[photo.ItemID]
+		if ok {
+			items[index].Photos = append(items[index].Photos, photo)
+		}
+	}
+	if err := photoRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate item photos: %w", err)
+	}
+
+	return items, nil
 }

@@ -4,7 +4,7 @@
     ],
     "swagger": "2.0",
     "info": {
-        "description": "Backend API проекта «Цепочка обмена».",
+        "description": "Backend API РїСЂРѕРµРєС‚Р° В«Р¦РµРїРѕС‡РєР° РѕР±РјРµРЅР°В».",
         "title": "Exchange Chain API",
         "contact": {
             "name": "Grigorev Vadim",
@@ -119,14 +119,14 @@
                 }
             }
         },
-        "/api/v1/chains/{chainId}/decline": {
+        "/api/v1/chain": {
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Фиксирует в Redis временный отказ текущего пользователя от товара, который он должен был получить. Состояние цепочки в PostgreSQL пока не изменяется.",
+                "description": "Ставит запрос на построение цепочек обмена для указанного желания в очередь. Проверяет существование аккаунта и принадлежность желания этому аккаунту, затем отвечает 202 Accepted; построение выполняется асинхронно воркерами Service, результат пишется в БД по мере нахождения цепей.",
                 "consumes": [
                     "application/json"
                 ],
@@ -136,30 +136,88 @@
                 "tags": [
                     "chains"
                 ],
-                "summary": "Отказ от цепочки обмена",
+                "summary": "Запуск построения цепочек для желания",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "ID цепочки",
-                        "name": "chainId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Получаемый товар, вызвавший отказ",
-                        "name": "request",
+                        "description": "Идентификатор пользователя",
+                        "name": "user_id",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/rejection.DeclineChainRequest"
+                            "type": "integer"
                         }
+                    },
+                    {
+                        "description": "Идентификатор желания",
+                        "name": "wished_item_id",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/by-item": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает все цепочки обмена, построенные для конкретного желания пользователя. Идентификаторы передаются как query-параметры user_id и wished_item_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Все цепочки конкретного желания пользователя",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Идентификатор пользователя",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Идентификатор желания",
+                        "name": "wished_item_id",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/rejection.DeclineChainResponse"
+                            "$ref": "#/definitions/cb.ListChainsResponse"
                         }
                     },
                     "400": {
@@ -183,14 +241,305 @@
                 }
             }
         },
-        "/api/v1/items": {
+        "/api/v1/chains/by-user": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает цепочки обмена, в которых пользователь является корневым участником или участником бартера. Идентификатор передаётся как query-параметр user_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Цепочки пользователя",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Идентификатор пользователя",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cb.ListChainsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/{chainId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает одну цепочку со всеми участниками и обменами. Доступ разрешён только участнику этой цепочки.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Получение цепочки по ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID цепочки",
+                        "name": "chainId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cb.ChainReadDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/{chainId}/accept": {
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Создаёт предмет текущего пользователя и сохраняет до пяти фотографий.",
+                "description": "Фиксирует согласие текущего пользователя. После согласия всех участников блокирует цепочку и резервирует участвующие предметы.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Принятие цепочки обмена",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID цепочки",
+                        "name": "chainId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cb.AcceptChainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/{chainId}/decline": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "По текущему пользователю и цепочке определяет получаемый предмет, отмечает пользователя как отказавшегося, отменяет цепочку в PostgreSQL и временно сохраняет отклонённый предмет в Redis.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Отказ от цепочки обмена",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID цепочки",
+                        "name": "chainId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cb.DeclineChainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/items": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает все предметы, принадлежащие пользователю из JWT, вместе с категориями и фотографиями.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "items"
+                ],
+                "summary": "Предметы текущего пользователя",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/item.ListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Создаёт предмет текущего пользователя, связанное по данным запроса желание и сохраняет до пяти фотографий.",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -258,6 +607,13 @@
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "Название или ключевые слова желаемого предмета",
+                        "name": "wanted_title_keywords",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
                         "type": "array",
                         "items": {
                             "type": "file"
@@ -314,6 +670,64 @@
                 }
             }
         },
+        "/api/v1/items/{itemId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает конкретный предмет по ID. Доступно любому авторизованному пользователю.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "items"
+                ],
+                "summary": "Получение предмета",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID предмета",
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/item.ReadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/me": {
             "get": {
                 "security": [
@@ -357,45 +771,140 @@
                 }
             }
         },
-        "/health": {
+        "/api/v1/ratings": {
             "get": {
-                "description": "Возвращает состояние HTTP-процесса без проверки внешних зависимостей.",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает средний рейтинг, количество оценок и все записи, где пользователь является получателем оценки.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "system"
+                    "users"
                 ],
-                "summary": "Проверка работоспособности",
+                "summary": "Получение рейтинга и истории оценок текущего пользователя",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpserver.HealthResponse"
+                            "$ref": "#/definitions/user.UserRatingsDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Записывает оценку текущего пользователя для другого участника закрытого бартера и обновляет средний публичный рейтинг получателя. Каждый участник бартера может оценить другого только один раз.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Создание записи о выставлении рейтинга от одного пользователя к другому",
+                "parameters": [
+                    {
+                        "description": "Оценка пользователя и идентификатор бартера",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/user.UserRatingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/user.TotalUserRatingDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/ready": {
+        "/api/v1/wishes": {
             "get": {
-                "description": "Проверяет доступность PostgreSQL и Redis и сообщает, готово ли приложение принимать запросы.",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает все желаемые предметы пользователя, определённого по JWT.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "system"
+                    "wishes"
                 ],
-                "summary": "Проверка готовности",
+                "summary": "Желания текущего пользователя",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpserver.ReadinessResponse"
+                            "$ref": "#/definitions/wish.ListResponse"
                         }
                     },
-                    "503": {
-                        "description": "Service Unavailable",
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/httpserver.ErrorResponse"
                         }
@@ -405,6 +914,250 @@
         }
     },
     "definitions": {
+        "cb.AcceptChainResponse": {
+            "type": "object",
+            "properties": {
+                "chain_id": {
+                    "type": "integer",
+                    "example": 77
+                },
+                "chain_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/exchange.Status"
+                        }
+                    ],
+                    "example": "pending"
+                },
+                "participant_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/exchange.ParticipantStatus"
+                        }
+                    ],
+                    "example": "accepted"
+                }
+            }
+        },
+        "cb.BarterReadDTO": {
+            "type": "object",
+            "properties": {
+                "from_user_id": {
+                    "type": "integer"
+                },
+                "give": {
+                    "$ref": "#/definitions/cb.GiveReadDTO"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "to_user_id": {
+                    "type": "integer"
+                },
+                "wish": {
+                    "$ref": "#/definitions/cb.WishReadDTO"
+                }
+            }
+        },
+        "cb.ChainParticipantReadDTO": {
+            "type": "object",
+            "properties": {
+                "accepted_at": {
+                    "type": "string"
+                },
+                "declined_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/exchange.ParticipantStatus"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "cb.ChainReadDTO": {
+            "type": "object",
+            "properties": {
+                "barters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cb.BarterReadDTO"
+                    }
+                },
+                "cancel_reason": {
+                    "type": "string"
+                },
+                "cancelled_at": {
+                    "type": "string"
+                },
+                "cancelled_by_user_id": {
+                    "type": "integer"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "locked_at": {
+                    "type": "string"
+                },
+                "participants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cb.ChainParticipantReadDTO"
+                    }
+                },
+                "root_id": {
+                    "type": "integer"
+                },
+                "root_wish": {
+                    "$ref": "#/definitions/cb.WishReadDTO"
+                },
+                "score": {
+                    "type": "number"
+                },
+                "signature": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "cb.DeclineChainResponse": {
+            "type": "object",
+            "properties": {
+                "chain_id": {
+                    "type": "integer",
+                    "example": 77
+                },
+                "received_item_id": {
+                    "type": "integer",
+                    "example": 205
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/exchange.Status"
+                        }
+                    ],
+                    "example": "cancelled"
+                }
+            }
+        },
+        "cb.GiveReadDTO": {
+            "type": "object",
+            "properties": {
+                "category_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "price_max": {
+                    "type": "integer"
+                },
+                "price_min": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "cb.ListChainsResponse": {
+            "type": "object",
+            "properties": {
+                "chains": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cb.ChainReadDTO"
+                    }
+                }
+            }
+        },
+        "cb.WishReadDTO": {
+            "type": "object",
+            "properties": {
+                "category_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "price_max": {
+                    "type": "integer"
+                },
+                "price_min": {
+                    "type": "integer"
+                },
+                "title_keywords": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "exchange.ParticipantStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "accepted",
+                "declined",
+                "expired"
+            ],
+            "x-enum-varnames": [
+                "ParticipantPending",
+                "ParticipantAccepted",
+                "ParticipantDeclined",
+                "ParticipantExpired"
+            ]
+        },
+        "exchange.Status": {
+            "type": "string",
+            "enum": [
+                "matched",
+                "pending",
+                "locked",
+                "in_delivery",
+                "completed",
+                "cancelled",
+                "disputed"
+            ],
+            "x-enum-varnames": [
+                "StatusMatched",
+                "StatusPending",
+                "StatusLocked",
+                "StatusInDelivery",
+                "StatusCompleted",
+                "StatusCancelled",
+                "StatusDisputed"
+            ]
+        },
         "httpserver.ErrorDetail": {
             "type": "object",
             "properties": {
@@ -423,24 +1176,6 @@
             "properties": {
                 "error": {
                     "$ref": "#/definitions/httpserver.ErrorDetail"
-                }
-            }
-        },
-        "httpserver.HealthResponse": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "example": "ok"
-                }
-            }
-        },
-        "httpserver.ReadinessResponse": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "example": "ready"
                 }
             }
         },
@@ -528,6 +1263,20 @@
                 },
                 "wanted_category": {
                     "$ref": "#/definitions/item.CategoryResponse"
+                },
+                "wish": {
+                    "$ref": "#/definitions/item.WishResponse"
+                }
+            }
+        },
+        "item.ListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.ReadResponse"
+                    }
                 }
             }
         },
@@ -544,44 +1293,111 @@
                 }
             }
         },
+        "item.ReadResponse": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "$ref": "#/definitions/item.CategoryResponse"
+                },
+                "condition": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/item.Condition"
+                        }
+                    ],
+                    "example": "good"
+                },
+                "created_at": {
+                    "type": "string",
+                    "example": "2026-08-05T15:00:00Z"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Исправна, есть небольшие царапины"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 101
+                },
+                "photos": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.PhotoResponse"
+                    }
+                },
+                "price_max": {
+                    "type": "integer",
+                    "example": 50000
+                },
+                "price_min": {
+                    "type": "integer",
+                    "example": 40000
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/item.Status"
+                        }
+                    ],
+                    "example": "searching"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Гитара Yamaha F310, 6 струн"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "example": "2026-08-05T15:00:00Z"
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 6
+                },
+                "wanted_category": {
+                    "$ref": "#/definitions/item.CategoryResponse"
+                }
+            }
+        },
         "item.Status": {
             "type": "string",
             "enum": [
                 "searching",
                 "in_chain",
+                "reserved",
+                "in_transit",
                 "exchanged",
                 "archived"
             ],
             "x-enum-varnames": [
                 "StatusSearching",
                 "StatusInChain",
+                "StatusReserved",
+                "StatusInTransit",
                 "StatusExchanged",
                 "StatusArchived"
             ]
         },
-        "rejection.DeclineChainRequest": {
+        "item.WishResponse": {
             "type": "object",
             "properties": {
-                "received_item_id": {
-                    "type": "integer",
-                    "example": 205
-                }
-            }
-        },
-        "rejection.DeclineChainResponse": {
-            "type": "object",
-            "properties": {
-                "chain_id": {
-                    "type": "integer",
-                    "example": 77
+                "category": {
+                    "$ref": "#/definitions/item.CategoryResponse"
                 },
-                "received_item_id": {
+                "id": {
                     "type": "integer",
                     "example": 205
                 },
-                "status": {
+                "price_max": {
+                    "type": "integer",
+                    "example": 50000
+                },
+                "price_min": {
+                    "type": "integer",
+                    "example": 40000
+                },
+                "title_keywords": {
                     "type": "string",
-                    "example": "rejection_recorded"
+                    "example": "Палатка туристическая"
                 }
             }
         },
@@ -673,11 +1489,135 @@
                     "example": "example-password"
                 }
             }
+        },
+        "user.TotalUserRatingDTO": {
+            "type": "object",
+            "properties": {
+                "total_scores": {
+                    "type": "integer"
+                },
+                "user_rating": {
+                    "type": "number"
+                }
+            }
+        },
+        "user.UserRatingEntry": {
+            "type": "object",
+            "properties": {
+                "barter_id": {
+                    "type": "integer"
+                },
+                "public_rating": {
+                    "type": "number"
+                },
+                "public_user": {
+                    "$ref": "#/definitions/user.PublicUser"
+                }
+            }
+        },
+        "user.UserRatingRequest": {
+            "type": "object",
+            "required": [
+                "barter_id",
+                "rating",
+                "to_user"
+            ],
+            "properties": {
+                "barter_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "rating": {
+                    "type": "number",
+                    "example": 5
+                },
+                "to_user": {
+                    "type": "integer",
+                    "example": 2
+                }
+            }
+        },
+        "user.UserRatingsDTO": {
+            "type": "object",
+            "properties": {
+                "ratings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/user.UserRatingEntry"
+                    }
+                },
+                "total_scores": {
+                    "type": "integer"
+                },
+                "user_rating": {
+                    "type": "number"
+                }
+            }
+        },
+        "wish.CategoryResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Палатки"
+                }
+            }
+        },
+        "wish.ListResponse": {
+            "type": "object",
+            "properties": {
+                "wishes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/wish.ReadResponse"
+                    }
+                }
+            }
+        },
+        "wish.ReadResponse": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "$ref": "#/definitions/wish.CategoryResponse"
+                },
+                "created_at": {
+                    "type": "string",
+                    "example": "2026-08-05T15:00:00Z"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 205
+                },
+                "price_max": {
+                    "type": "integer",
+                    "example": 50000
+                },
+                "price_min": {
+                    "type": "integer",
+                    "example": 40000
+                },
+                "title_keywords": {
+                    "type": "string",
+                    "example": "Палатка туристическая"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "example": "2026-08-05T15:00:00Z"
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 6
+                }
+            }
         }
     },
     "securityDefinitions": {
         "BearerAuth": {
-            "description": "Введите токен в формате: Bearer \u003caccess_token\u003e",
+            "description": "Р’РІРµРґРёС‚Рµ С‚РѕРєРµРЅ РІ С„РѕСЂРјР°С‚Рµ: Bearer \u003caccess_token\u003e",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"

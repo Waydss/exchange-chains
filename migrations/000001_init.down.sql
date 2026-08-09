@@ -5,4 +5,6 @@ DROP TABLE IF EXISTS wishes;
 DROP TABLE IF EXISTS item_photos;
 DROP TABLE IF EXISTS items;
 DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS user_ratings;
+DROP TABLE IF EXISTS user_shadow_registry;
 DROP TABLE IF EXISTS users;

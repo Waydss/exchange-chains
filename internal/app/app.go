@@ -17,9 +17,9 @@ import (
 	"github.com/L-ka080/DDB-6-case/internal/platform/redisclient"
 	"github.com/L-ka080/DDB-6-case/internal/platform/security"
 	"github.com/L-ka080/DDB-6-case/internal/platform/storage"
-	"github.com/L-ka080/DDB-6-case/internal/rejection"
 	transporthttp "github.com/L-ka080/DDB-6-case/internal/transport/http"
 	"github.com/L-ka080/DDB-6-case/internal/user"
+	"github.com/L-ka080/DDB-6-case/internal/wish"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -29,29 +29,30 @@ type App struct {
 	pool             *pgxpool.Pool
 	redisConnection  *redisclient.Connection
 	chainService     *cb.Service
-	cleanupScheduler *rejection.Scheduler
+	cleanupScheduler *cb.Scheduler
 }
 
 type repositories struct {
 	user     user.Repository
 	category item.CategoryRepository
 	item     item.Repository
+	wish     wish.Repository
 	chain    cb.Repository
 }
 
 type services struct {
-	user      *user.Service
-	item      *item.Service
-	chain     *cb.Service
-	decline   *rejection.DeclineChainUseCase
-	rejection rejection.Store
+	user           *user.Service
+	item           *item.Service
+	wish           *wish.Service
+	chain          *cb.Service
+	rejectionStore cb.RejectionStore
 }
 
 type handlers struct {
-	user      *user.Handler
-	item      *item.Handler
-	chain     *cb.Handler
-	rejection *rejection.Handler
+	user  *user.Handler
+	item  *item.Handler
+	wish  *wish.Handler
+	chain *cb.Handler
 }
 
 func New() (*App, error) {
@@ -95,7 +96,7 @@ func New() (*App, error) {
 	services := newServices(cfg, repositories, fileStorage, jwtProvider, redisConnection)
 	handlers := newHandlers(cfg, services)
 
-	cleanupScheduler, err := rejection.NewScheduler(services.rejection)
+	cleanupScheduler, err := cb.NewScheduler(services.rejectionStore)
 	if err != nil {
 		closeDependencies(pool, redisConnection)
 		return nil, fmt.Errorf("initialize rejected item cleanup: %w", err)
@@ -108,12 +109,26 @@ func New() (*App, error) {
 		},
 		cfg.Upload.Dir,
 		transporthttp.Routes{
-			Register:       handlers.user.Register,
-			Login:          handlers.user.Login,
-			Me:             handlers.user.Me,
-			CreateItem:     handlers.item.Create,
-			CreateChain:    handlers.chain.CreateChainsForItem,
-			DeclineChain:   handlers.rejection.DeclineChain,
+			Register:   handlers.user.Register,
+			Login:      handlers.user.Login,
+			Me:         handlers.user.Me,
+			CreateItem: handlers.item.Create,
+			ListItems:  handlers.item.List,
+			GetItem:    handlers.item.GetByID,
+			ListWishes: handlers.wish.List,
+
+			// FIXME Remove this at one point...
+			CreateChain: handlers.chain.CreateChainsForItem,
+
+			GetChainsByUser: handlers.chain.GetChainsByUser,
+			GetChainsByItem: handlers.chain.GetChainsByItem,
+
+			UpdatePublicRating: handlers.user.UpdatePublicRating,
+			GetUserRatings:     handlers.user.GetUserRatings,
+
+			GetChainByID:   handlers.chain.GetChainByID,
+			AcceptChain:    handlers.chain.AcceptChain,
+			DeclineChain:   handlers.chain.DeclineChain,
 			AuthMiddleware: middleware.Auth(jwtProvider),
 		},
 	)
@@ -197,6 +212,7 @@ func newRepositories(pool *pgxpool.Pool) repositories {
 		user:     user.NewPostgresRepository(pool),
 		category: category.NewPostgresRepository(pool),
 		item:     item.NewPostgresRepository(pool),
+		wish:     wish.NewPostgresRepository(pool),
 		chain:    cb.NewPostgresRepository(pool),
 	}
 }
@@ -208,23 +224,29 @@ func newServices(
 	jwtProvider user.TokenProvider,
 	redisConnection *redisclient.Connection,
 ) services {
-	rejectionStore := rejection.NewRedisStore(redisConnection.Client(), cfg.Rejection.ItemTTL)
+	rejectionStore := cb.NewRedisStore(redisConnection.Client(), cfg.Rejection.ItemTTL)
+
+	userService := user.NewService(repositories.user, security.NewPasswordHasher(), jwtProvider)
+
+	chainService := cb.NewService(repositories.chain, userService, rejectionStore)
+	itemService := item.NewService(repositories.item, repositories.category, fileStorage, cfg.Upload.MaxItemPhotos, chainService)
+	wishService := wish.NewService(repositories.wish)
 
 	return services{
-		user:      user.NewService(repositories.user, security.NewPasswordHasher(), jwtProvider),
-		item:      item.NewService(repositories.item, repositories.category, fileStorage, cfg.Upload.MaxItemPhotos),
-		chain:     cb.NewService(repositories.chain),
-		decline:   rejection.NewDeclineChainUseCase(rejectionStore),
-		rejection: rejectionStore,
+		user:           userService,
+		item:           itemService,
+		wish:           wishService,
+		chain:          chainService,
+		rejectionStore: rejectionStore,
 	}
 }
 
 func newHandlers(cfg *config.Config, services services) handlers {
 	return handlers{
-		user:      user.NewHandler(services.user),
-		item:      item.NewHandler(services.item, cfg.Upload.MaxFileSize, cfg.Upload.MaxItemPhotos),
-		chain:     cb.NewHandler(services.chain),
-		rejection: rejection.NewHandler(services.decline),
+		user:  user.NewHandler(services.user),
+		item:  item.NewHandler(services.item, cfg.Upload.MaxFileSize, cfg.Upload.MaxItemPhotos),
+		wish:  wish.NewHandler(services.wish),
+		chain: cb.NewHandler(services.chain),
 	}
 }
 
