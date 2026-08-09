@@ -6,18 +6,18 @@ import (
 	"github.com/L-ka080/DDB-6-case/internal/exchange"
 )
 
-const rejectionRecordedStatus = "rejection_recorded"
-
-// DeclineChainRequest contains the item that caused the chain rejection.
-type DeclineChainRequest struct {
-	ReceivedItemID int64 `json:"received_item_id" example:"205"`
+// DeclineChainResponse confirms that a chain was cancelled.
+type DeclineChainResponse struct {
+	ChainID        int64           `json:"chain_id" example:"77"`
+	ReceivedItemID int64           `json:"received_item_id" example:"205"`
+	Status         exchange.Status `json:"status" example:"cancelled"`
 }
 
-// DeclineChainResponse confirms that an item rejection was recorded.
-type DeclineChainResponse struct {
-	ChainID        int64  `json:"chain_id" example:"77"`
-	ReceivedItemID int64  `json:"received_item_id" example:"205"`
-	Status         string `json:"status" example:"rejection_recorded"`
+// AcceptChainResponse describes the participant and chain state after acceptance.
+type AcceptChainResponse struct {
+	ChainID           int64                      `json:"chain_id" example:"77"`
+	ParticipantStatus exchange.ParticipantStatus `json:"participant_status" example:"accepted"`
+	ChainStatus       exchange.Status            `json:"chain_status" example:"pending"`
 }
 
 // ListChainsResponse is returned by the read-only chains endpoint.
@@ -27,14 +27,30 @@ type ListChainsResponse struct {
 
 // ChainReadDTO is the read-only representation of a chain with its barters.
 type ChainReadDTO struct {
-	ID        int64           `json:"id"`
-	RootID    int64           `json:"root_id"`
-	RootWish  WishReadDTO     `json:"root_wish"`
-	Signature string          `json:"signature"`
-	Status    string          `json:"status"`
-	Score     float64         `json:"score"`
-	CreatedAt time.Time       `json:"created_at"`
-	Barters   []BarterReadDTO `json:"barters"`
+	ID                int64                     `json:"id"`
+	RootID            int64                     `json:"root_id"`
+	RootWish          WishReadDTO               `json:"root_wish"`
+	Signature         string                    `json:"signature"`
+	Status            string                    `json:"status"`
+	Score             float64                   `json:"score"`
+	ExpiresAt         *time.Time                `json:"expires_at,omitempty"`
+	LockedAt          *time.Time                `json:"locked_at,omitempty"`
+	CompletedAt       *time.Time                `json:"completed_at,omitempty"`
+	CancelledAt       *time.Time                `json:"cancelled_at,omitempty"`
+	CancelledByUserID *int64                    `json:"cancelled_by_user_id,omitempty"`
+	CancelReason      string                    `json:"cancel_reason,omitempty"`
+	CreatedAt         time.Time                 `json:"created_at"`
+	Participants      []ChainParticipantReadDTO `json:"participants"`
+	Barters           []BarterReadDTO           `json:"barters"`
+}
+
+// ChainParticipantReadDTO exposes one participant's chain decision.
+type ChainParticipantReadDTO struct {
+	UserID     int64                      `json:"user_id"`
+	Status     exchange.ParticipantStatus `json:"status"`
+	AcceptedAt *time.Time                 `json:"accepted_at,omitempty"`
+	DeclinedAt *time.Time                 `json:"declined_at,omitempty"`
+	UpdatedAt  time.Time                  `json:"updated_at"`
 }
 
 // BarterReadDTO is the read-only representation of one barter inside a chain.
@@ -102,14 +118,32 @@ func newChainReadDTO(chain exchange.Chain) ChainReadDTO {
 		})
 	}
 
+	participants := make([]ChainParticipantReadDTO, 0, len(chain.Participants))
+	for _, participant := range chain.Participants {
+		participants = append(participants, ChainParticipantReadDTO{
+			UserID:     participant.UserID,
+			Status:     participant.Status,
+			AcceptedAt: participant.AcceptedAt,
+			DeclinedAt: participant.DeclinedAt,
+			UpdatedAt:  participant.UpdatedAt,
+		})
+	}
+
 	return ChainReadDTO{
-		ID:        chain.ID,
-		RootID:    chain.RootID,
-		RootWish:  newWishReadDTO(chain.RootWish),
-		Signature: chain.Signature,
-		Status:    string(chain.Status),
-		Score:     chain.Score,
-		CreatedAt: chain.CreatedAt,
-		Barters:   barters,
+		ID:                chain.ID,
+		RootID:            chain.RootID,
+		RootWish:          newWishReadDTO(chain.RootWish),
+		Signature:         chain.Signature,
+		Status:            string(chain.Status),
+		Score:             chain.Score,
+		ExpiresAt:         chain.ExpiresAt,
+		LockedAt:          chain.LockedAt,
+		CompletedAt:       chain.CompletedAt,
+		CancelledAt:       chain.CancelledAt,
+		CancelledByUserID: chain.CancelledByUserID,
+		CancelReason:      chain.CancelReason,
+		CreatedAt:         chain.CreatedAt,
+		Participants:      participants,
+		Barters:           barters,
 	}
 }

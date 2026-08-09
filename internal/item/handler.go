@@ -19,6 +19,8 @@ const multipartMemory = 1 << 20
 // HandlerService contains item use cases required by the HTTP handler.
 type HandlerService interface {
 	Create(ctx context.Context, input CreateInput) (CreateResponse, error)
+	ListByUserID(ctx context.Context, userID int64) ([]ReadResponse, error)
+	GetByID(ctx context.Context, itemID int64) (ReadResponse, error)
 }
 
 // Handler exposes item creation over HTTP.
@@ -42,7 +44,7 @@ func NewHandler(service HandlerService, maxFileSize int64, maxPhotos int) *Handl
 // Create godoc
 //
 // @Summary Создание предмета
-// @Description Создаёт предмет текущего пользователя и сохраняет до пяти фотографий.
+// @Description Создаёт предмет текущего пользователя, связанное по данным запроса желание и сохраняет до пяти фотографий.
 // @Tags items
 // @Accept multipart/form-data
 // @Produce json
@@ -54,6 +56,7 @@ func NewHandler(service HandlerService, maxFileSize int64, maxPhotos int) *Handl
 // @Param price_min formData integer true "Минимальная цена в рублях"
 // @Param price_max formData integer true "Максимальная цена в рублях"
 // @Param wanted_category_name formData string true "Желаемая категория обмена"
+// @Param wanted_title_keywords formData string true "Название или ключевые слова желаемого предмета"
 // @Param photos formData []file false "Фотографии JPEG, PNG или WEBP" collectionFormat(multi)
 // @Success 201 {object} CreateResponse
 // @Failure 400 {object} httpserver.ErrorResponse
@@ -64,9 +67,8 @@ func NewHandler(service HandlerService, maxFileSize int64, maxPhotos int) *Handl
 // @Failure 500 {object} httpserver.ErrorResponse
 // @Router /api/v1/items [post]
 func (h *Handler) Create(c *gin.Context) {
-	userIDValue, ok := c.Get(middleware.UserIDContextKey)
-	userID, validUserID := userIDValue.(int64)
-	if !ok || !validUserID || userID <= 0 {
+	userID, ok := authenticatedUserID(c)
+	if !ok {
 		httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
 		return
 	}
@@ -116,15 +118,16 @@ func (h *Handler) Create(c *gin.Context) {
 	defer closePhotos()
 
 	result, err := h.service.Create(c.Request.Context(), CreateInput{
-		UserID:             userID,
-		Title:              firstValue(c.Request.MultipartForm.Value, "title"),
-		Description:        firstValue(c.Request.MultipartForm.Value, "description"),
-		Condition:          firstValue(c.Request.MultipartForm.Value, "condition"),
-		CategoryName:       firstValue(c.Request.MultipartForm.Value, "category_name"),
-		PriceMin:           priceMin,
-		PriceMax:           priceMax,
-		WantedCategoryName: firstValue(c.Request.MultipartForm.Value, "wanted_category_name"),
-		Photos:             photoUploads,
+		UserID:              userID,
+		Title:               firstValue(c.Request.MultipartForm.Value, "title"),
+		Description:         firstValue(c.Request.MultipartForm.Value, "description"),
+		Condition:           firstValue(c.Request.MultipartForm.Value, "condition"),
+		CategoryName:        firstValue(c.Request.MultipartForm.Value, "category_name"),
+		PriceMin:            priceMin,
+		PriceMax:            priceMax,
+		WantedCategoryName:  firstValue(c.Request.MultipartForm.Value, "wanted_category_name"),
+		WantedTitleKeywords: firstValue(c.Request.MultipartForm.Value, "wanted_title_keywords"),
+		Photos:              photoUploads,
 	})
 	if err != nil {
 		handleError(c, err)
@@ -132,6 +135,74 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, result)
+}
+
+// List godoc
+//
+// @Summary Предметы текущего пользователя
+// @Description Возвращает все предметы, принадлежащие пользователю из JWT, вместе с категориями и фотографиями.
+// @Tags items
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} ListResponse
+// @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 500 {object} httpserver.ErrorResponse
+// @Router /api/v1/items [get]
+func (h *Handler) List(c *gin.Context) {
+	userID, ok := authenticatedUserID(c)
+	if !ok {
+		httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	items, err := h.service.ListByUserID(c.Request.Context(), userID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, ListResponse{Items: items})
+}
+
+// GetByID godoc
+//
+// @Summary Получение предмета
+// @Description Возвращает конкретный предмет по ID. Доступно любому авторизованному пользователю.
+// @Tags items
+// @Produce json
+// @Security BearerAuth
+// @Param itemId path integer true "ID предмета"
+// @Success 200 {object} ReadResponse
+// @Failure 400 {object} httpserver.ErrorResponse
+// @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 404 {object} httpserver.ErrorResponse
+// @Failure 500 {object} httpserver.ErrorResponse
+// @Router /api/v1/items/{itemId} [get]
+func (h *Handler) GetByID(c *gin.Context) {
+	if _, ok := authenticatedUserID(c); !ok {
+		httpserver.WriteError(c, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	itemID, err := strconv.ParseInt(c.Param("itemId"), 10, 64)
+	if err != nil || itemID <= 0 {
+		httpserver.WriteError(c, http.StatusBadRequest, "validation_error", "itemId must be a positive integer")
+		return
+	}
+
+	result, err := h.service.GetByID(c.Request.Context(), itemID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+func authenticatedUserID(c *gin.Context) (int64, bool) {
+	value, ok := c.Get(middleware.UserIDContextKey)
+	userID, valid := value.(int64)
+	return userID, ok && valid && userID > 0
 }
 
 func parsePrice(values map[string][]string, field string) (int64, error) {
@@ -180,6 +251,8 @@ func handleError(c *gin.Context, err error) {
 	switch {
 	case errors.As(err, &validationError):
 		httpserver.WriteError(c, http.StatusBadRequest, "validation_error", validationError.Message)
+	case errors.Is(err, ErrNotFound):
+		httpserver.WriteError(c, http.StatusNotFound, "item_not_found", "item not found")
 	case errors.Is(err, ErrCategoryNotFound):
 		httpserver.WriteError(c, http.StatusNotFound, "category_not_found", "category not found")
 	case errors.Is(err, ErrWantedCategoryNotFound):

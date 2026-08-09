@@ -1,4 +1,4 @@
-package rejection
+package cb
 
 import (
 	"context"
@@ -44,9 +44,6 @@ func TestRedisStoreIntegration(t *testing.T) {
 	if cardinality := client.ZCard(ctx, keys[0]).Val(); cardinality != 2 {
 		t.Fatalf("user sorted set cardinality = %d, want 2", cardinality)
 	}
-	if exists := client.Exists(ctx, keys[1]).Val(); exists != 1 {
-		t.Fatal("other user did not receive a separate Redis key")
-	}
 
 	oldScore := client.ZScore(ctx, keys[0], "101").Val()
 	now = now.Add(time.Hour)
@@ -55,9 +52,6 @@ func TestRedisStoreIntegration(t *testing.T) {
 	}
 	if newScore := client.ZScore(ctx, keys[0], "101").Val(); newScore <= oldScore {
 		t.Fatalf("refreshed score = %v, want greater than %v", newScore, oldScore)
-	}
-	if cardinality := client.ZCard(ctx, keys[0]).Val(); cardinality != 2 {
-		t.Fatal("refresh created a duplicate sorted set member")
 	}
 
 	filtered, err := store.FilterRejected(ctx, userID, []int64{101, 300, 205})

@@ -1,4 +1,4 @@
-package rejection
+package cb
 
 import (
 	"testing"

@@ -17,13 +17,18 @@ type Routes struct {
 	Login      gin.HandlerFunc
 	Me         gin.HandlerFunc
 	CreateItem gin.HandlerFunc
+	ListItems  gin.HandlerFunc
+	GetItem    gin.HandlerFunc
+	ListWishes gin.HandlerFunc
 
 	// FIXME Remove this at one point...
 	CreateChain gin.HandlerFunc
 
 	GetChainsByUser gin.HandlerFunc
 	GetChainsByItem gin.HandlerFunc
+	GetChainByID    gin.HandlerFunc
 
+	AcceptChain    gin.HandlerFunc
 	DeclineChain   gin.HandlerFunc
 	AuthMiddleware gin.HandlerFunc
 }
@@ -58,7 +63,14 @@ func NewRouter(
 	protected.Use(routes.AuthMiddleware)
 	protected.GET("/me", routes.Me)
 	protected.POST("/items", routes.CreateItem)
+	protected.GET("/items", routes.ListItems)
+	protected.GET("/items/:itemId", routes.GetItem)
+	protected.GET("/wishes", routes.ListWishes)
 	protected.POST("/chain", routes.CreateChain)
+	protected.GET("/chains/by-user", routes.GetChainsByUser)
+	protected.GET("/chains/by-item", routes.GetChainsByItem)
+	protected.GET("/chains/:chainId", routes.GetChainByID)
+	protected.POST("/chains/:chainId/accept", routes.AcceptChain)
 	protected.POST("/chains/:chainId/decline", routes.DeclineChain)
 
 	router.NoRoute(func(c *gin.Context) {

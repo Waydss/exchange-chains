@@ -188,13 +188,20 @@ func testRoutes() transporthttp.Routes {
 	}
 
 	return transporthttp.Routes{
-		Register:       noop,
-		Login:          noop,
-		Me:             noop,
-		CreateItem:     noop,
-		CreateChain:    noop,
-		DeclineChain:   noop,
-		AuthMiddleware: pass,
+		Register:        noop,
+		Login:           noop,
+		Me:              noop,
+		CreateItem:      noop,
+		ListItems:       noop,
+		GetItem:         noop,
+		ListWishes:      noop,
+		CreateChain:     noop,
+		GetChainsByUser: noop,
+		GetChainsByItem: noop,
+		GetChainByID:    noop,
+		AcceptChain:     noop,
+		DeclineChain:    noop,
+		AuthMiddleware:  pass,
 	}
 }
 

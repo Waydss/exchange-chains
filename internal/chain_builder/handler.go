@@ -127,15 +127,8 @@ type ChainRequest struct {
 	WishedItemId int64 `json:"wished_item"`
 }
 
-// ListChains godoc
-//
-// @Summary Список цепочек
-// @Description Возвращает все цепочки обмена с вложенными бартерами.
-// @Tags chains
-// @Produce json
-// @Success 200 {object} ListChainsResponse
-// @Failure 500 {object} httpserver.ErrorResponse
-// @Router /api/v1/chains [get]
+// ListChains returns every persisted chain with its nested data.
+// It is kept for internal tooling and is not exposed by the HTTP router.
 func (h *Handler) ListChains(ctx *gin.Context) {
 	chains, err := h.service.repository.ListChains(ctx.Request.Context())
 	if err != nil {
@@ -155,14 +148,16 @@ func (h *Handler) ListChains(ctx *gin.Context) {
 
 // GetChainsByItem godoc
 //
-// @Summary Цепочки для желания
-// @Description Возвращает цепочки обмена, построенные для указанного желания пользователя. Идентификаторы передаются как query-параметры user_id и wished_item_id.
+// @Summary Все цепочки конкретного желания пользователя
+// @Description Возвращает все цепочки обмена, построенные для конкретного желания пользователя. Идентификаторы передаются как query-параметры user_id и wished_item_id.
 // @Tags chains
 // @Produce json
+// @Security BearerAuth
 // @Param user_id query int true "Идентификатор пользователя"
 // @Param wished_item_id query int true "Идентификатор желания"
 // @Success 200 {object} ListChainsResponse
 // @Failure 400 {object} httpserver.ErrorResponse
+// @Failure 401 {object} httpserver.ErrorResponse
 // @Failure 500 {object} httpserver.ErrorResponse
 // @Router /api/v1/chains/by-item [get]
 func (h *Handler) GetChainsByItem(ctx *gin.Context) {
@@ -171,7 +166,7 @@ func (h *Handler) GetChainsByItem(ctx *gin.Context) {
 		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "user_id and wished_item_id must be positive integers")
 		return
 	}
-	if request.UserID == 0 || request.WishedItemID == 0 {
+	if request.UserID <= 0 || request.WishedItemID <= 0 {
 		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "user_id and wished_item_id must be positive integers")
 		return
 	}
@@ -198,9 +193,11 @@ func (h *Handler) GetChainsByItem(ctx *gin.Context) {
 // @Description Возвращает цепочки обмена, в которых пользователь является корневым участником или участником бартера. Идентификатор передаётся как query-параметр user_id.
 // @Tags chains
 // @Produce json
+// @Security BearerAuth
 // @Param user_id query int true "Идентификатор пользователя"
 // @Success 200 {object} ListChainsResponse
 // @Failure 400 {object} httpserver.ErrorResponse
+// @Failure 401 {object} httpserver.ErrorResponse
 // @Failure 500 {object} httpserver.ErrorResponse
 // @Router /api/v1/chains/by-user [get]
 func (h *Handler) GetChainsByUser(ctx *gin.Context) {
@@ -209,7 +206,7 @@ func (h *Handler) GetChainsByUser(ctx *gin.Context) {
 		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "user_id must be a positive integer")
 		return
 	}
-	if request.UserID == 0 {
+	if request.UserID <= 0 {
 		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "user_id must be a positive integer")
 		return
 	}
@@ -230,67 +227,155 @@ func (h *Handler) GetChainsByUser(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response)
 }
 
-func (h *Handler) AcceptChain(ctx *gin.Context) {
-	httpserver.WriteError(ctx, http.StatusInternalServerError, "not_implemented", "not implemented")
+// GetChainByID godoc
+//
+// @Summary Получение цепочки по ID
+// @Description Возвращает одну цепочку со всеми участниками и обменами. Доступ разрешён только участнику этой цепочки.
+// @Tags chains
+// @Produce json
+// @Security BearerAuth
+// @Param chainId path integer true "ID цепочки"
+// @Success 200 {object} ChainReadDTO
+// @Failure 400 {object} httpserver.ErrorResponse
+// @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 403 {object} httpserver.ErrorResponse
+// @Failure 404 {object} httpserver.ErrorResponse
+// @Failure 500 {object} httpserver.ErrorResponse
+// @Router /api/v1/chains/{chainId} [get]
+func (h *Handler) GetChainByID(ctx *gin.Context) {
+	userID, ok := authenticatedUserID(ctx)
+	if !ok {
+		httpserver.WriteError(ctx, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
 
-	// h.service.AcceptChain(ctx, )
+	chainID, ok := chainIDFromPath(ctx)
+	if !ok {
+		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "chainId must be a positive integer")
+		return
+	}
+
+	chain, err := h.service.GetChainByID(ctx.Request.Context(), chainID, userID)
+	if err != nil {
+		handleChainOperationError(ctx, "get chain by ID", err)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, newChainReadDTO(chain))
+}
+
+// AcceptChain godoc
+//
+// @Summary Принятие цепочки обмена
+// @Description Фиксирует согласие текущего пользователя. После согласия всех участников блокирует цепочку и резервирует участвующие предметы.
+// @Tags chains
+// @Produce json
+// @Security BearerAuth
+// @Param chainId path integer true "ID цепочки"
+// @Success 200 {object} AcceptChainResponse
+// @Failure 400 {object} httpserver.ErrorResponse
+// @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 403 {object} httpserver.ErrorResponse
+// @Failure 404 {object} httpserver.ErrorResponse
+// @Failure 409 {object} httpserver.ErrorResponse
+// @Failure 500 {object} httpserver.ErrorResponse
+// @Router /api/v1/chains/{chainId}/accept [post]
+func (h *Handler) AcceptChain(ctx *gin.Context) {
+	userID, ok := authenticatedUserID(ctx)
+	if !ok {
+		httpserver.WriteError(ctx, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
+		return
+	}
+
+	chainID, ok := chainIDFromPath(ctx)
+	if !ok {
+		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "chainId must be a positive integer")
+		return
+	}
+
+	result, err := h.service.AcceptChain(ctx.Request.Context(), chainID, userID)
+	if err != nil {
+		handleChainOperationError(ctx, "accept chain request", err)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, AcceptChainResponse{
+		ChainID:           result.ChainID,
+		ParticipantStatus: result.ParticipantStatus,
+		ChainStatus:       result.ChainStatus,
+	})
 }
 
 // DeclineChain godoc
 //
 // @Summary Отказ от цепочки обмена
-// @Description Отмечает текущего пользователя как отказавшегося, отменяет цепочку в PostgreSQL и временно сохраняет отклонённый товар в Redis.
+// @Description По текущему пользователю и цепочке определяет получаемый предмет, отмечает пользователя как отказавшегося, отменяет цепочку в PostgreSQL и временно сохраняет отклонённый предмет в Redis.
 // @Tags chains
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param chainId path integer true "ID цепочки"
-// @Param request body DeclineChainRequest true "Получаемый товар, вызвавший отказ"
 // @Success 200 {object} DeclineChainResponse
 // @Failure 400 {object} httpserver.ErrorResponse
 // @Failure 401 {object} httpserver.ErrorResponse
+// @Failure 403 {object} httpserver.ErrorResponse
+// @Failure 404 {object} httpserver.ErrorResponse
+// @Failure 409 {object} httpserver.ErrorResponse
 // @Failure 500 {object} httpserver.ErrorResponse
 // @Router /api/v1/chains/{chainId}/decline [post]
 func (h *Handler) DeclineChain(ctx *gin.Context) {
-	userIDValue, ok := ctx.Get(middleware.UserIDContextKey)
-	userID, validUserID := userIDValue.(int64)
-	if !ok || !validUserID || userID <= 0 {
+	userID, ok := authenticatedUserID(ctx)
+	if !ok {
 		httpserver.WriteError(ctx, http.StatusUnauthorized, "invalid_token", "invalid or expired access token")
 		return
 	}
 
-	chainID, err := strconv.ParseInt(ctx.Param("chainId"), 10, 64)
-	if err != nil || chainID <= 0 {
+	chainID, ok := chainIDFromPath(ctx)
+	if !ok {
 		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "chainId must be a positive integer")
 		return
 	}
 
-	var request DeclineChainRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "request body must be valid JSON")
-		return
-	}
-	if request.ReceivedItemID <= 0 {
-		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", "received_item_id must be positive")
-		return
-	}
-
-	if err := h.service.DeclineChain(ctx.Request.Context(), chainID, userID, request.ReceivedItemID); err != nil {
-		var validationError *ValidationError
-		if errors.As(err, &validationError) {
-			httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", validationError.Error())
-			return
-		}
-		log.Printf("decline chain request failed: %v", err)
-		httpserver.WriteError(ctx, http.StatusInternalServerError, "internal_error", "internal server error")
+	result, err := h.service.DeclineChain(ctx.Request.Context(), chainID, userID)
+	if err != nil {
+		handleChainOperationError(ctx, "decline chain request", err)
 		return
 	}
 
 	ctx.JSON(http.StatusOK, DeclineChainResponse{
-		ChainID:        chainID,
-		ReceivedItemID: request.ReceivedItemID,
-		Status:         rejectionRecordedStatus,
+		ChainID:        result.ChainID,
+		ReceivedItemID: result.ReceivedItemID,
+		Status:         result.ChainStatus,
 	})
+}
+
+func authenticatedUserID(ctx *gin.Context) (int64, bool) {
+	value, ok := ctx.Get(middleware.UserIDContextKey)
+	userID, valid := value.(int64)
+	return userID, ok && valid && userID > 0
+}
+
+func chainIDFromPath(ctx *gin.Context) (int64, bool) {
+	chainID, err := strconv.ParseInt(ctx.Param("chainId"), 10, 64)
+	return chainID, err == nil && chainID > 0
+}
+
+func handleChainOperationError(ctx *gin.Context, operation string, err error) {
+	var validationError *ValidationError
+	switch {
+	case errors.As(err, &validationError):
+		httpserver.WriteError(ctx, http.StatusBadRequest, "validation_error", validationError.Error())
+	case errors.Is(err, ErrChainNotFound):
+		httpserver.WriteError(ctx, http.StatusNotFound, "chain_not_found", "chain not found")
+	case errors.Is(err, ErrNotChainParticipant):
+		httpserver.WriteError(ctx, http.StatusForbidden, "not_chain_participant", "user is not a participant of this chain")
+	case errors.Is(err, ErrChainItemsUnavailable):
+		httpserver.WriteError(ctx, http.StatusConflict, "chain_items_unavailable", "one or more chain items are no longer available")
+	case errors.Is(err, ErrChainStatusConflict):
+		httpserver.WriteError(ctx, http.StatusConflict, "chain_status_conflict", "chain status does not allow this operation")
+	default:
+		log.Printf("%s failed: %v", operation, err)
+		httpserver.WriteError(ctx, http.StatusInternalServerError, "internal_error", "internal server error")
+	}
 }
 
 func (h *Handler) DiscardChain(ctx *gin.Context) {

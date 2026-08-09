@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/L-ka080/DDB-6-case/internal/exchange"
 	"github.com/L-ka080/DDB-6-case/internal/item"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+const cancelReasonParticipantDeclined = "participant_declined"
 
 // MARK: Internal
 
@@ -209,22 +210,180 @@ func (r *PostgresRepository) GetChainsByUser(ctx context.Context, userId int64) 
 	return r.getChains(ctx, where, userId)
 }
 
-// TODO implement this
+// GetChainByID returns one chain after verifying that the user participates in it.
+func (r *PostgresRepository) GetChainByID(ctx context.Context, chainID, userID int64) (exchange.Chain, error) {
+	const accessQuery = `
+		SELECT
+			EXISTS (SELECT 1 FROM chains WHERE id = $1),
+			EXISTS (
+				SELECT 1
+				FROM chain_participants
+				WHERE chain_id = $1 AND user_id = $2
+			)`
 
-func (r *PostgresRepository) AcceptChain(ctx context.Context, chainId, userId int64) (exchange.Chain, error) {
+	var chainExists, isParticipant bool
+	if err := r.pool.QueryRow(ctx, accessQuery, chainID, userID).Scan(&chainExists, &isParticipant); err != nil {
+		return exchange.Chain{}, fmt.Errorf("check chain access: %w", err)
+	}
+	if !chainExists {
+		return exchange.Chain{}, fmt.Errorf("%w: chain %d", ErrChainNotFound, chainID)
+	}
+	if !isParticipant {
+		return exchange.Chain{}, fmt.Errorf("%w: chain %d", ErrNotChainParticipant, chainID)
+	}
 
-	return exchange.Chain{}, errors.New("[cb/repository] Not implemented")
+	chains, err := r.getChains(ctx, "WHERE id = $1", chainID)
+	if err != nil {
+		return exchange.Chain{}, err
+	}
+	if len(chains) == 0 {
+		return exchange.Chain{}, fmt.Errorf("%w: chain %d", ErrChainNotFound, chainID)
+	}
+
+	return chains[0], nil
 }
 
-// DeclineChain marks the current participant as declined and cancels the chain.
-func (r *PostgresRepository) DeclineChain(ctx context.Context, chainID, userID int64) (exchange.Chain, error) {
+// AcceptChain records one participant's acceptance and locks the chain once
+// every participant has accepted it.
+func (r *PostgresRepository) AcceptChain(ctx context.Context, chainID, userID int64) (AcceptResult, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return exchange.Chain{}, fmt.Errorf("begin decline chain transaction: %w", err)
+		return AcceptResult{}, fmt.Errorf("begin accept chain transaction: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback(ctx)
 	}()
+
+	chainStatus, err := chainStatusForUpdate(ctx, tx, chainID)
+	if err != nil {
+		return AcceptResult{}, err
+	}
+
+	participantStatus, err := participantStatusForUpdate(ctx, tx, chainID, userID)
+	if err != nil {
+		return AcceptResult{}, err
+	}
+
+	if chainStatus == exchange.StatusLocked && participantStatus == exchange.ParticipantAccepted {
+		return AcceptResult{
+			ChainID:           chainID,
+			ParticipantStatus: exchange.ParticipantAccepted,
+			ChainStatus:       exchange.StatusLocked,
+		}, nil
+	}
+	if !chainDecisionAllowed(chainStatus) {
+		return AcceptResult{}, fmt.Errorf("%w: current status is %s", ErrChainStatusConflict, chainStatus)
+	}
+	if participantStatus != exchange.ParticipantPending && participantStatus != exchange.ParticipantAccepted {
+		return AcceptResult{}, fmt.Errorf(
+			"%w: participant status is %s",
+			ErrChainStatusConflict,
+			participantStatus,
+		)
+	}
+
+	if participantStatus == exchange.ParticipantPending {
+		const acceptParticipantQuery = `
+			UPDATE chain_participants
+			SET status = $1,
+			    accepted_at = NOW(),
+			    updated_at = NOW()
+			WHERE chain_id = $2 AND user_id = $3`
+
+		if _, err := tx.Exec(ctx, acceptParticipantQuery, exchange.ParticipantAccepted, chainID, userID); err != nil {
+			return AcceptResult{}, fmt.Errorf("accept chain participant: %w", err)
+		}
+	}
+
+	const remainingParticipantsQuery = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM chain_participants
+			WHERE chain_id = $1 AND status <> $2
+		)`
+
+	var hasRemainingParticipants bool
+	if err := tx.QueryRow(
+		ctx,
+		remainingParticipantsQuery,
+		chainID,
+		exchange.ParticipantAccepted,
+	).Scan(&hasRemainingParticipants); err != nil {
+		return AcceptResult{}, fmt.Errorf("check remaining chain participants: %w", err)
+	}
+
+	newChainStatus := exchange.StatusPending
+	if hasRemainingParticipants {
+		const markPendingQuery = `UPDATE chains SET status = $1 WHERE id = $2`
+		if _, err := tx.Exec(ctx, markPendingQuery, exchange.StatusPending, chainID); err != nil {
+			return AcceptResult{}, fmt.Errorf("mark chain pending: %w", err)
+		}
+	} else {
+		if err := reserveChainItems(ctx, tx, chainID); err != nil {
+			return AcceptResult{}, err
+		}
+
+		const lockChainQuery = `
+			UPDATE chains
+			SET status = $1, locked_at = NOW()
+			WHERE id = $2`
+		if _, err := tx.Exec(ctx, lockChainQuery, exchange.StatusLocked, chainID); err != nil {
+			return AcceptResult{}, fmt.Errorf("lock accepted chain: %w", err)
+		}
+		newChainStatus = exchange.StatusLocked
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return AcceptResult{}, fmt.Errorf("commit accept chain transaction: %w", err)
+	}
+
+	return AcceptResult{
+		ChainID:           chainID,
+		ParticipantStatus: exchange.ParticipantAccepted,
+		ChainStatus:       newChainStatus,
+	}, nil
+}
+
+// DeclineChain marks the current participant as declined, cancels the chain,
+// and returns the item that the participant would have received.
+func (r *PostgresRepository) DeclineChain(ctx context.Context, chainID, userID int64) (DeclineResult, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return DeclineResult{}, fmt.Errorf("begin decline chain transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	chainStatus, err := chainStatusForUpdate(ctx, tx, chainID)
+	if err != nil {
+		return DeclineResult{}, err
+	}
+	if _, err := participantStatusForUpdate(ctx, tx, chainID, userID); err != nil {
+		return DeclineResult{}, err
+	}
+	if !chainDecisionAllowed(chainStatus) {
+		return DeclineResult{}, fmt.Errorf("%w: current status is %s", ErrChainStatusConflict, chainStatus)
+	}
+
+	const receivedItemQuery = `
+		SELECT give_item_id
+		FROM chain_barters
+		WHERE chain_id = $1 AND to_user_id = $2
+		ORDER BY position
+		LIMIT 1`
+
+	var receivedItemID int64
+	if err := tx.QueryRow(ctx, receivedItemQuery, chainID, userID).Scan(&receivedItemID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return DeclineResult{}, fmt.Errorf(
+				"find received item for chain %d and user %d: no matching barter",
+				chainID,
+				userID,
+			)
+		}
+		return DeclineResult{}, fmt.Errorf("find received item for declined chain: %w", err)
+	}
 
 	const participantQuery = `
 		UPDATE chain_participants
@@ -235,45 +394,111 @@ func (r *PostgresRepository) DeclineChain(ctx context.Context, chainID, userID i
 
 	result, err := tx.Exec(ctx, participantQuery, exchange.ParticipantDeclined, chainID, userID)
 	if err != nil {
-		return exchange.Chain{}, fmt.Errorf("decline chain participant: %w", err)
+		return DeclineResult{}, fmt.Errorf("decline chain participant: %w", err)
 	}
 	if result.RowsAffected() == 0 {
-		return exchange.Chain{}, fmt.Errorf("decline chain: user %d is not a participant of chain %d", userID, chainID)
+		return DeclineResult{}, fmt.Errorf("%w: chain %d", ErrNotChainParticipant, chainID)
 	}
 
-	const cancelReasonParticipantDeclined = "participant_declined"
 	const chainQuery = `
 		UPDATE chains
 		SET status = $1,
 		    cancelled_at = NOW(),
 		    cancelled_by_user_id = $2,
 		    cancel_reason = $3
-		WHERE id = $4
-		RETURNING cancelled_at`
+		WHERE id = $4`
 
-	var cancelledAt time.Time
-	if err := tx.QueryRow(
+	if _, err := tx.Exec(
 		ctx,
 		chainQuery,
 		exchange.StatusCancelled,
 		userID,
 		cancelReasonParticipantDeclined,
 		chainID,
-	).Scan(&cancelledAt); err != nil {
-		return exchange.Chain{}, fmt.Errorf("cancel chain: %w", err)
+	); err != nil {
+		return DeclineResult{}, fmt.Errorf("cancel chain: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return exchange.Chain{}, fmt.Errorf("commit decline chain transaction: %w", err)
+		return DeclineResult{}, fmt.Errorf("commit decline chain transaction: %w", err)
 	}
 
-	return exchange.Chain{
-		ID:                chainID,
-		Status:            exchange.StatusCancelled,
-		CancelledAt:       &cancelledAt,
-		CancelledByUserID: &userID,
-		CancelReason:      cancelReasonParticipantDeclined,
+	return DeclineResult{
+		ChainID:        chainID,
+		ReceivedItemID: receivedItemID,
+		ChainStatus:    exchange.StatusCancelled,
 	}, nil
+}
+
+func chainStatusForUpdate(ctx context.Context, tx pgx.Tx, chainID int64) (exchange.Status, error) {
+	const query = `SELECT status FROM chains WHERE id = $1 FOR UPDATE`
+
+	var status exchange.Status
+	if err := tx.QueryRow(ctx, query, chainID).Scan(&status); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("%w: chain %d", ErrChainNotFound, chainID)
+		}
+		return "", fmt.Errorf("load chain status: %w", err)
+	}
+
+	return status, nil
+}
+
+func participantStatusForUpdate(ctx context.Context, tx pgx.Tx, chainID, userID int64) (exchange.ParticipantStatus, error) {
+	const query = `
+		SELECT status
+		FROM chain_participants
+		WHERE chain_id = $1 AND user_id = $2
+		FOR UPDATE`
+
+	var status exchange.ParticipantStatus
+	if err := tx.QueryRow(ctx, query, chainID, userID).Scan(&status); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("%w: chain %d", ErrNotChainParticipant, chainID)
+		}
+		return "", fmt.Errorf("load chain participant status: %w", err)
+	}
+
+	return status, nil
+}
+
+func chainDecisionAllowed(status exchange.Status) bool {
+	return status == exchange.StatusMatched || status == exchange.StatusPending
+}
+
+func reserveChainItems(ctx context.Context, tx pgx.Tx, chainID int64) error {
+	const countQuery = `
+		SELECT COUNT(DISTINCT give_item_id)
+		FROM chain_barters
+		WHERE chain_id = $1`
+
+	var itemCount int64
+	if err := tx.QueryRow(ctx, countQuery, chainID).Scan(&itemCount); err != nil {
+		return fmt.Errorf("count chain items: %w", err)
+	}
+	if itemCount == 0 {
+		return errors.New("lock chain: chain has no items")
+	}
+
+	const reserveQuery = `
+		UPDATE items
+		SET status = $1, updated_at = NOW()
+		WHERE id IN (
+			SELECT give_item_id
+			FROM chain_barters
+			WHERE chain_id = $2
+		)
+		  AND status = $3`
+
+	result, err := tx.Exec(ctx, reserveQuery, item.StatusReserved, chainID, item.StatusSearching)
+	if err != nil {
+		return fmt.Errorf("reserve chain items: %w", err)
+	}
+	if result.RowsAffected() != itemCount {
+		return fmt.Errorf("%w: chain %d", ErrChainItemsUnavailable, chainID)
+	}
+
+	return nil
 }
 
 // MARK: Private functions
@@ -431,7 +656,9 @@ func (r *PostgresRepository) getGives(ctx context.Context, accountIDs []int64) (
 // their root wishes and nested barters.
 func (r *PostgresRepository) getChains(ctx context.Context, where string, args ...any) ([]exchange.Chain, error) {
 	query := `
-		SELECT id, root_user_id, root_wish_id, signature, status, score, created_at
+		SELECT id, root_user_id, root_wish_id, signature, status, score,
+		       expires_at, locked_at, completed_at, cancelled_at,
+		       cancelled_by_user_id, cancel_reason, created_at
 		FROM chains`
 	if where != "" {
 		query += " " + where
@@ -457,6 +684,12 @@ func (r *PostgresRepository) getChains(ctx context.Context, where string, args .
 			&chain.Signature,
 			&status,
 			&chain.Score,
+			&chain.ExpiresAt,
+			&chain.LockedAt,
+			&chain.CompletedAt,
+			&chain.CancelledAt,
+			&chain.CancelledByUserID,
+			&chain.CancelReason,
 			&chain.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan chain: %w", err)
@@ -549,6 +782,43 @@ func (r *PostgresRepository) getChains(ctx context.Context, where string, args .
 	}
 	if err := barterRows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate chain barters: %w", err)
+	}
+	barterRows.Close()
+
+	const participantQuery = `
+		SELECT chain_id, user_id, status, accepted_at, declined_at, created_at, updated_at
+		FROM chain_participants
+		WHERE chain_id = ANY($1)
+		ORDER BY chain_id, user_id`
+
+	participantRows, err := r.pool.Query(ctx, participantQuery, chainIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list chain participants: %w", err)
+	}
+	defer participantRows.Close()
+
+	for participantRows.Next() {
+		var participant exchange.ChainParticipant
+		if err := participantRows.Scan(
+			&participant.ChainID,
+			&participant.UserID,
+			&participant.Status,
+			&participant.AcceptedAt,
+			&participant.DeclinedAt,
+			&participant.CreatedAt,
+			&participant.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan chain participant: %w", err)
+		}
+
+		index, ok := chainIndex[participant.ChainID]
+		if !ok {
+			continue
+		}
+		chains[index].Participants = append(chains[index].Participants, participant)
+	}
+	if err := participantRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate chain participants: %w", err)
 	}
 
 	return chains, nil

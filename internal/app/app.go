@@ -19,6 +19,7 @@ import (
 	"github.com/L-ka080/DDB-6-case/internal/platform/storage"
 	transporthttp "github.com/L-ka080/DDB-6-case/internal/transport/http"
 	"github.com/L-ka080/DDB-6-case/internal/user"
+	"github.com/L-ka080/DDB-6-case/internal/wish"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -35,12 +36,14 @@ type repositories struct {
 	user     user.Repository
 	category item.CategoryRepository
 	item     item.Repository
+	wish     wish.Repository
 	chain    cb.Repository
 }
 
 type services struct {
 	user           *user.Service
 	item           *item.Service
+	wish           *wish.Service
 	chain          *cb.Service
 	rejectionStore cb.RejectionStore
 }
@@ -48,6 +51,7 @@ type services struct {
 type handlers struct {
 	user  *user.Handler
 	item  *item.Handler
+	wish  *wish.Handler
 	chain *cb.Handler
 }
 
@@ -108,13 +112,18 @@ func New() (*App, error) {
 			Login:      handlers.user.Login,
 			Me:         handlers.user.Me,
 			CreateItem: handlers.item.Create,
+			ListItems:  handlers.item.List,
+			GetItem:    handlers.item.GetByID,
+			ListWishes: handlers.wish.List,
 
 			// FIXME Remove this at one point...
 			CreateChain: handlers.chain.CreateChainsForItem,
 
 			GetChainsByUser: handlers.chain.GetChainsByUser,
 			GetChainsByItem: handlers.chain.GetChainsByItem,
+			GetChainByID:    handlers.chain.GetChainByID,
 
+			AcceptChain:    handlers.chain.AcceptChain,
 			DeclineChain:   handlers.chain.DeclineChain,
 			AuthMiddleware: middleware.Auth(jwtProvider),
 		},
@@ -178,6 +187,7 @@ func newRepositories(pool *pgxpool.Pool) repositories {
 		user:     user.NewPostgresRepository(pool),
 		category: category.NewPostgresRepository(pool),
 		item:     item.NewPostgresRepository(pool),
+		wish:     wish.NewPostgresRepository(pool),
 		chain:    cb.NewPostgresRepository(pool),
 	}
 }
@@ -195,10 +205,12 @@ func newServices(
 
 	chainService := cb.NewService(repositories.chain, userService, rejectionStore)
 	itemService := item.NewService(repositories.item, repositories.category, fileStorage, cfg.Upload.MaxItemPhotos, chainService)
+	wishService := wish.NewService(repositories.wish)
 
 	return services{
 		user:           userService,
 		item:           itemService,
+		wish:           wishService,
 		chain:          chainService,
 		rejectionStore: rejectionStore,
 	}
@@ -208,6 +220,7 @@ func newHandlers(cfg *config.Config, services services) handlers {
 	return handlers{
 		user:  user.NewHandler(services.user),
 		item:  item.NewHandler(services.item, cfg.Upload.MaxFileSize, cfg.Upload.MaxItemPhotos),
+		wish:  wish.NewHandler(services.wish),
 		chain: cb.NewHandler(services.chain),
 	}
 }

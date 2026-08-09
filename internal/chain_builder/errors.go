@@ -1,6 +1,16 @@
 package cb
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var (
+	ErrChainNotFound         = errors.New("chain not found")
+	ErrNotChainParticipant   = errors.New("user is not a chain participant")
+	ErrChainStatusConflict   = errors.New("chain status does not allow this operation")
+	ErrChainItemsUnavailable = errors.New("one or more chain items are unavailable")
+)
 
 // ValidationError describes invalid chain operation input.
 type ValidationError struct {

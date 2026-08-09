@@ -10,6 +10,7 @@ import (
 
 	"github.com/L-ka080/DDB-6-case/internal/category"
 	"github.com/L-ka080/DDB-6-case/internal/item"
+	"github.com/L-ka080/DDB-6-case/internal/wish"
 )
 
 var errRepository = errors.New("repository unavailable")
@@ -20,7 +21,11 @@ type fakeRepository struct {
 	photoError       error
 	createParams     item.CreateItemParams
 	photoParams      []item.CreatePhotoParams
+	wishParams       item.CreateWishParams
 	committed        bool
+	listResult       []item.Details
+	getResult        item.Details
+	readError        error
 }
 
 func (r *fakeRepository) WithinTransaction(_ context.Context, fn func(item.Transaction) error) error {
@@ -31,6 +36,14 @@ func (r *fakeRepository) WithinTransaction(_ context.Context, fn func(item.Trans
 	err := fn(&fakeTransaction{repository: r})
 	r.committed = err == nil
 	return err
+}
+
+func (r *fakeRepository) ListByUserID(_ context.Context, _ int64) ([]item.Details, error) {
+	return r.listResult, r.readError
+}
+
+func (r *fakeRepository) GetByID(_ context.Context, _ int64) (item.Details, error) {
+	return r.getResult, r.readError
 }
 
 type fakeTransaction struct {
@@ -79,6 +92,21 @@ func (t *fakeTransaction) CreatePhotos(
 	}
 
 	return created, nil
+}
+
+func (t *fakeTransaction) CreateWish(
+	_ context.Context,
+	params item.CreateWishParams,
+) (wish.WishedItem, error) {
+	t.repository.wishParams = params
+	return wish.WishedItem{
+		ID:            205,
+		UserID:        params.UserID,
+		CategoryID:    params.CategoryID,
+		PriceMin:      params.PriceMin,
+		PriceMax:      params.PriceMax,
+		TitleKeywords: params.TitleKeywords,
+	}, nil
 }
 
 type fakeCategoryRepository struct {
@@ -321,13 +349,14 @@ func TestCreateCleansFilesWhenPhotoMetadataFails(t *testing.T) {
 
 func validCreateInput() item.CreateInput {
 	return item.CreateInput{
-		UserID:             42,
-		Title:              "  Гитара Yamaha F310, 6 струн  ",
-		Description:        "  Исправна  ",
-		Condition:          "good",
-		CategoryName:       " Гитары ",
-		PriceMin:           40000,
-		PriceMax:           50000,
-		WantedCategoryName: " Палатки ",
+		UserID:              42,
+		Title:               "  Гитара Yamaha F310, 6 струн  ",
+		Description:         "  Исправна  ",
+		Condition:           "good",
+		CategoryName:        " Гитары ",
+		PriceMin:            40000,
+		PriceMax:            50000,
+		WantedCategoryName:  " Палатки ",
+		WantedTitleKeywords: " Палатка туристическая ",
 	}
 }

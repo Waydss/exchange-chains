@@ -185,42 +185,21 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/chains": {
-            "get": {
-                "description": "Возвращает все цепочки обмена с вложенными бартерами.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "chains"
-                ],
-                "summary": "Список цепочек",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/cb.ListChainsResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httpserver.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/chains/by-item": {
             "get": {
-                "description": "Возвращает цепочки обмена, построенные для указанного желания пользователя. Идентификаторы передаются как query-параметры user_id и wished_item_id.",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает все цепочки обмена, построенные для конкретного желания пользователя. Идентификаторы передаются как query-параметры user_id и wished_item_id.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "chains"
                 ],
-                "summary": "Цепочки для желания",
+                "summary": "Все цепочки конкретного желания пользователя",
                 "parameters": [
                     {
                         "type": "integer",
@@ -250,6 +229,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/httpserver.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -261,6 +246,11 @@ const docTemplate = `{
         },
         "/api/v1/chains/by-user": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Возвращает цепочки обмена, в которых пользователь является корневым участником или участником бартера. Идентификатор передаётся как query-параметр user_id.",
                 "produces": [
                     "application/json"
@@ -291,6 +281,146 @@ const docTemplate = `{
                             "$ref": "#/definitions/httpserver.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/{chainId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает одну цепочку со всеми участниками и обменами. Доступ разрешён только участнику этой цепочки.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Получение цепочки по ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID цепочки",
+                        "name": "chainId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cb.ChainReadDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/{chainId}/accept": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Фиксирует согласие текущего пользователя. После согласия всех участников блокирует цепочку и резервирует участвующие предметы.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chains"
+                ],
+                "summary": "Принятие цепочки обмена",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID цепочки",
+                        "name": "chainId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cb.AcceptChainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -307,10 +437,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Фиксирует в Redis временный отказ текущего пользователя от товара, который он должен был получить. Состояние цепочки в PostgreSQL пока не изменяется.",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "По текущему пользователю и цепочке определяет получаемый предмет, отмечает пользователя как отказавшегося, отменяет цепочку в PostgreSQL и временно сохраняет отклонённый предмет в Redis.",
                 "produces": [
                     "application/json"
                 ],
@@ -325,28 +452,74 @@ const docTemplate = `{
                         "name": "chainId",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "Получаемый товар, вызвавший отказ",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/rejection.DeclineChainRequest"
-                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/rejection.DeclineChainResponse"
+                            "$ref": "#/definitions/cb.DeclineChainResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/items": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает все предметы, принадлежащие пользователю из JWT, вместе с категориями и фотографиями.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "items"
+                ],
+                "summary": "Предметы текущего пользователя",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/item.ListResponse"
                         }
                     },
                     "401": {
@@ -362,16 +535,14 @@ const docTemplate = `{
                         }
                     }
                 }
-            }
-        },
-        "/api/v1/items": {
+            },
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Создаёт предмет текущего пользователя и сохраняет до пяти фотографий.",
+                "description": "Создаёт предмет текущего пользователя, связанное по данным запроса желание и сохраняет до пяти фотографий.",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -439,6 +610,13 @@ const docTemplate = `{
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "Название или ключевые слова желаемого предмета",
+                        "name": "wanted_title_keywords",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
                         "type": "array",
                         "items": {
                             "type": "file"
@@ -495,6 +673,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/items/{itemId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает конкретный предмет по ID. Доступно любому авторизованному пользователю.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "items"
+                ],
+                "summary": "Получение предмета",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID предмета",
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/item.ReadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/me": {
             "get": {
                 "security": [
@@ -537,9 +773,71 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/api/v1/wishes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает все желаемые предметы пользователя, определённого по JWT.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "wishes"
+                ],
+                "summary": "Желания текущего пользователя",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/wish.ListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "cb.AcceptChainResponse": {
+            "type": "object",
+            "properties": {
+                "chain_id": {
+                    "type": "integer",
+                    "example": 77
+                },
+                "chain_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/exchange.Status"
+                        }
+                    ],
+                    "example": "pending"
+                },
+                "participant_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/exchange.ParticipantStatus"
+                        }
+                    ],
+                    "example": "accepted"
+                }
+            }
+        },
         "cb.BarterReadDTO": {
             "type": "object",
             "properties": {
@@ -566,6 +864,26 @@ const docTemplate = `{
                 }
             }
         },
+        "cb.ChainParticipantReadDTO": {
+            "type": "object",
+            "properties": {
+                "accepted_at": {
+                    "type": "string"
+                },
+                "declined_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/exchange.ParticipantStatus"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "cb.ChainReadDTO": {
             "type": "object",
             "properties": {
@@ -575,11 +893,35 @@ const docTemplate = `{
                         "$ref": "#/definitions/cb.BarterReadDTO"
                     }
                 },
+                "cancel_reason": {
+                    "type": "string"
+                },
+                "cancelled_at": {
+                    "type": "string"
+                },
+                "cancelled_by_user_id": {
+                    "type": "integer"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
                 "created_at": {
+                    "type": "string"
+                },
+                "expires_at": {
                     "type": "string"
                 },
                 "id": {
                     "type": "integer"
+                },
+                "locked_at": {
+                    "type": "string"
+                },
+                "participants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cb.ChainParticipantReadDTO"
+                    }
                 },
                 "root_id": {
                     "type": "integer"
@@ -595,6 +937,27 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "cb.DeclineChainResponse": {
+            "type": "object",
+            "properties": {
+                "chain_id": {
+                    "type": "integer",
+                    "example": 77
+                },
+                "received_item_id": {
+                    "type": "integer",
+                    "example": 205
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/exchange.Status"
+                        }
+                    ],
+                    "example": "cancelled"
                 }
             }
         },
@@ -657,6 +1020,42 @@ const docTemplate = `{
                     "type": "integer"
                 }
             }
+        },
+        "exchange.ParticipantStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "accepted",
+                "declined",
+                "expired"
+            ],
+            "x-enum-varnames": [
+                "ParticipantPending",
+                "ParticipantAccepted",
+                "ParticipantDeclined",
+                "ParticipantExpired"
+            ]
+        },
+        "exchange.Status": {
+            "type": "string",
+            "enum": [
+                "matched",
+                "pending",
+                "locked",
+                "in_delivery",
+                "completed",
+                "cancelled",
+                "disputed"
+            ],
+            "x-enum-varnames": [
+                "StatusMatched",
+                "StatusPending",
+                "StatusLocked",
+                "StatusInDelivery",
+                "StatusCompleted",
+                "StatusCancelled",
+                "StatusDisputed"
+            ]
         },
         "httpserver.ErrorDetail": {
             "type": "object",
@@ -763,6 +1162,20 @@ const docTemplate = `{
                 },
                 "wanted_category": {
                     "$ref": "#/definitions/item.CategoryResponse"
+                },
+                "wish": {
+                    "$ref": "#/definitions/item.WishResponse"
+                }
+            }
+        },
+        "item.ListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.ReadResponse"
+                    }
                 }
             }
         },
@@ -776,6 +1189,71 @@ const docTemplate = `{
                 "url": {
                     "type": "string",
                     "example": "/uploads/items/101/7d9f03c7.webp"
+                }
+            }
+        },
+        "item.ReadResponse": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "$ref": "#/definitions/item.CategoryResponse"
+                },
+                "condition": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/item.Condition"
+                        }
+                    ],
+                    "example": "good"
+                },
+                "created_at": {
+                    "type": "string",
+                    "example": "2026-08-05T15:00:00Z"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Исправна, есть небольшие царапины"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 101
+                },
+                "photos": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.PhotoResponse"
+                    }
+                },
+                "price_max": {
+                    "type": "integer",
+                    "example": 50000
+                },
+                "price_min": {
+                    "type": "integer",
+                    "example": 40000
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/item.Status"
+                        }
+                    ],
+                    "example": "searching"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Гитара Yamaha F310, 6 струн"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "example": "2026-08-05T15:00:00Z"
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 6
+                },
+                "wanted_category": {
+                    "$ref": "#/definitions/item.CategoryResponse"
                 }
             }
         },
@@ -798,29 +1276,27 @@ const docTemplate = `{
                 "StatusArchived"
             ]
         },
-        "rejection.DeclineChainRequest": {
+        "item.WishResponse": {
             "type": "object",
             "properties": {
-                "received_item_id": {
-                    "type": "integer",
-                    "example": 205
-                }
-            }
-        },
-        "rejection.DeclineChainResponse": {
-            "type": "object",
-            "properties": {
-                "chain_id": {
-                    "type": "integer",
-                    "example": 77
+                "category": {
+                    "$ref": "#/definitions/item.CategoryResponse"
                 },
-                "received_item_id": {
+                "id": {
                     "type": "integer",
                     "example": 205
                 },
-                "status": {
+                "price_max": {
+                    "type": "integer",
+                    "example": 50000
+                },
+                "price_min": {
+                    "type": "integer",
+                    "example": 40000
+                },
+                "title_keywords": {
                     "type": "string",
-                    "example": "rejection_recorded"
+                    "example": "Палатка туристическая"
                 }
             }
         },
@@ -910,6 +1386,66 @@ const docTemplate = `{
                     "type": "string",
                     "minLength": 8,
                     "example": "example-password"
+                }
+            }
+        },
+        "wish.CategoryResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Палатки"
+                }
+            }
+        },
+        "wish.ListResponse": {
+            "type": "object",
+            "properties": {
+                "wishes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/wish.ReadResponse"
+                    }
+                }
+            }
+        },
+        "wish.ReadResponse": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "$ref": "#/definitions/wish.CategoryResponse"
+                },
+                "created_at": {
+                    "type": "string",
+                    "example": "2026-08-05T15:00:00Z"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 205
+                },
+                "price_max": {
+                    "type": "integer",
+                    "example": 50000
+                },
+                "price_min": {
+                    "type": "integer",
+                    "example": 40000
+                },
+                "title_keywords": {
+                    "type": "string",
+                    "example": "Палатка туристическая"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "example": "2026-08-05T15:00:00Z"
+                },
+                "user_id": {
+                    "type": "integer",
+                    "example": 6
                 }
             }
         }

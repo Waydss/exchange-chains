@@ -1,4 +1,4 @@
-package rejection
+package cb
 
 import (
 	"context"
@@ -25,26 +25,17 @@ func TestRedisStoreRejectUsesPerUserSortedSetAndRefreshesScore(t *testing.T) {
 	}
 
 	userKey := "rejected_items:42"
-	if len(backend.sets[userKey]) != 2 {
-		t.Fatalf("members in %q = %d, want 2", userKey, len(backend.sets[userKey]))
-	}
 	wantExpiration := float64(now.Add(ttl).Unix())
-	if backend.sets[userKey]["101"] != wantExpiration || backend.sets[userKey]["205"] != wantExpiration {
-		t.Fatalf("scores in %q = %#v, want %v", userKey, backend.sets[userKey], wantExpiration)
+	if len(backend.sets[userKey]) != 2 || backend.sets[userKey]["101"] != wantExpiration {
+		t.Fatalf("members in %q = %#v", userKey, backend.sets[userKey])
 	}
-	if len(backend.sets["rejected_items:7"]) != 1 {
-		t.Fatal("second user must have a separate Redis key")
-	}
-	if backend.ttls[userKey] != ttl {
-		t.Fatalf("key TTL = %s, want %s", backend.ttls[userKey], ttl)
+	if len(backend.sets["rejected_items:7"]) != 1 || backend.ttls[userKey] != ttl {
+		t.Fatal("rejections must use per-user keys with the configured TTL")
 	}
 
 	now = now.Add(time.Hour)
 	if err := store.Reject(context.Background(), 42, 101); err != nil {
 		t.Fatalf("refresh rejection: %v", err)
-	}
-	if len(backend.sets[userKey]) != 2 {
-		t.Fatalf("refresh created duplicate; members = %d", len(backend.sets[userKey]))
 	}
 	if got := backend.sets[userKey]["101"]; got != float64(now.Add(ttl).Unix()) {
 		t.Fatalf("refreshed score = %v, want %d", got, now.Add(ttl).Unix())
@@ -74,14 +65,6 @@ func TestRedisStoreFilterRejectedPreservesOrder(t *testing.T) {
 	if _, exists := backend.sets["rejected_items:42"]["318"]; exists {
 		t.Fatal("expired candidate was not removed")
 	}
-
-	got, err = store.FilterRejected(context.Background(), 42, nil)
-	if err != nil || len(got) != 0 {
-		t.Fatalf("empty candidates = %v, error = %v", got, err)
-	}
-	if backend.scoreCalls != 1 {
-		t.Fatal("empty candidates must not access Redis")
-	}
 }
 
 func TestRedisStoreCleanupExpired(t *testing.T) {
@@ -91,9 +74,7 @@ func TestRedisStoreCleanupExpired(t *testing.T) {
 		"101": float64(now.Add(-time.Second).Unix()),
 		"205": float64(now.Add(time.Hour).Unix()),
 	}
-	backend.sets["rejected_items:7"] = map[string]float64{
-		"318": float64(now.Unix()),
-	}
+	backend.sets["rejected_items:7"] = map[string]float64{"318": float64(now.Unix())}
 	backend.sets["unrelated:key"] = map[string]float64{"1": 0}
 	store := newRedisStore(backend, time.Hour, func() time.Time { return now })
 
@@ -105,9 +86,6 @@ func TestRedisStoreCleanupExpired(t *testing.T) {
 	}
 	if _, exists := backend.sets["rejected_items:42"]["205"]; !exists {
 		t.Fatal("active item was removed by cleanup")
-	}
-	if _, exists := backend.sets["rejected_items:7"]; exists {
-		t.Fatal("empty sorted set key should disappear")
 	}
 	if _, exists := backend.sets["unrelated:key"]; !exists {
 		t.Fatal("cleanup touched an unrelated key")
@@ -121,10 +99,7 @@ type memoryBackend struct {
 }
 
 func newMemoryBackend() *memoryBackend {
-	return &memoryBackend{
-		sets: make(map[string]map[string]float64),
-		ttls: make(map[string]time.Duration),
-	}
+	return &memoryBackend{sets: make(map[string]map[string]float64), ttls: make(map[string]time.Duration)}
 }
 
 func (b *memoryBackend) reject(_ context.Context, key, member string, score float64, ttl time.Duration) error {

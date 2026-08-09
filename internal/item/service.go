@@ -8,15 +8,17 @@ import (
 	"unicode/utf8"
 
 	"github.com/L-ka080/DDB-6-case/internal/category"
+	"github.com/L-ka080/DDB-6-case/internal/wish"
 )
 
 const (
-	minTitleLength       = 3
-	maxTitleLength       = 200
-	maxDescriptionLength = 3000
+	minTitleLength               = 3
+	maxTitleLength               = 200
+	maxDescriptionLength         = 3000
+	maxWantedTitleKeywordsLength = 200
 )
 
-// Service creates items with category lookup and transactional photo metadata.
+// Service creates offered items and wishes with category lookup and photo metadata.
 type Service struct {
 	repository         Repository
 	categoryRepository CategoryRepository
@@ -46,13 +48,14 @@ type ChainEnqueer interface {
 	EnqueueChainRequest(userID, wishedItemID int64)
 }
 
-// Create validates and atomically persists an item and its photo metadata.
+// Create validates and atomically persists an item, its wish, and photo metadata.
 func (s *Service) Create(ctx context.Context, input CreateInput) (CreateResponse, error) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.Description = strings.TrimSpace(input.Description)
 	input.Condition = strings.TrimSpace(input.Condition)
 	input.CategoryName = strings.TrimSpace(input.CategoryName)
 	input.WantedCategoryName = strings.TrimSpace(input.WantedCategoryName)
+	input.WantedTitleKeywords = strings.TrimSpace(input.WantedTitleKeywords)
 
 	if err := s.validate(input); err != nil {
 		return CreateResponse{}, err
@@ -76,6 +79,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (CreateResponse
 
 	var createdItem Item
 	var createdPhotos []Photo
+	var createdWish wish.WishedItem
 	err = s.repository.WithinTransaction(ctx, func(transaction Transaction) error {
 		createdItem, err = transaction.CreateItem(ctx, CreateItemParams{
 			UserID:           input.UserID,
@@ -106,6 +110,17 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (CreateResponse
 			return fmt.Errorf("create item photo metadata: %w", err)
 		}
 
+		createdWish, err = transaction.CreateWish(ctx, CreateWishParams{
+			UserID:        input.UserID,
+			CategoryID:    wantedCategory.ID,
+			PriceMin:      input.PriceMin,
+			PriceMax:      input.PriceMax,
+			TitleKeywords: input.WantedTitleKeywords,
+		})
+		if err != nil {
+			return fmt.Errorf("create wanted item: %w", err)
+		}
+
 		return nil
 	})
 	if err != nil {
@@ -118,9 +133,37 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (CreateResponse
 		return CreateResponse{}, err
 	}
 
-	s.chainEnqueer.EnqueueChainRequest(createdItem.UserID, createdItem.ID)
+	s.chainEnqueer.EnqueueChainRequest(createdItem.UserID, createdWish.ID)
 
-	return toCreateResponse(createdItem, itemCategory, wantedCategory, createdPhotos), nil
+	return toCreateResponse(createdItem, createdWish, itemCategory, wantedCategory, createdPhotos), nil
+}
+
+// ListByUserID returns all items owned by the authenticated user.
+func (s *Service) ListByUserID(ctx context.Context, userID int64) ([]ReadResponse, error) {
+	if userID <= 0 {
+		return nil, &ValidationError{Message: "authenticated user is required"}
+	}
+
+	items, err := s.repository.ListByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list user items: %w", err)
+	}
+
+	return toReadResponses(items), nil
+}
+
+// GetByID returns an item visible to any authenticated user.
+func (s *Service) GetByID(ctx context.Context, itemID int64) (ReadResponse, error) {
+	if itemID <= 0 {
+		return ReadResponse{}, &ValidationError{Message: "itemId must be a positive integer"}
+	}
+
+	found, err := s.repository.GetByID(ctx, itemID)
+	if err != nil {
+		return ReadResponse{}, fmt.Errorf("get item: %w", err)
+	}
+
+	return toReadResponse(found), nil
 }
 
 func (s *Service) validate(input CreateInput) error {
@@ -143,6 +186,10 @@ func (s *Service) validate(input CreateInput) error {
 	}
 	if input.WantedCategoryName == "" {
 		return &ValidationError{Message: "wanted_category_name is required"}
+	}
+	keywordsLength := utf8.RuneCountInString(input.WantedTitleKeywords)
+	if keywordsLength == 0 || keywordsLength > maxWantedTitleKeywordsLength {
+		return &ValidationError{Message: "wanted_title_keywords must contain between 1 and 200 characters"}
 	}
 	if input.PriceMin <= 0 || input.PriceMax <= 0 {
 		return &ValidationError{Message: "price_min and price_max must be greater than zero"}
@@ -168,6 +215,7 @@ func validCondition(condition Condition) bool {
 
 func toCreateResponse(
 	created Item,
+	createdWish wish.WishedItem,
 	itemCategory category.Category,
 	wantedCategory category.Category,
 	photos []Photo,
@@ -192,8 +240,55 @@ func toCreateResponse(
 			ID:   wantedCategory.ID,
 			Name: wantedCategory.Name,
 		},
+		Wish: WishResponse{
+			ID: createdWish.ID,
+			Category: CategoryResponse{
+				ID:   wantedCategory.ID,
+				Name: wantedCategory.Name,
+			},
+			PriceMin:      createdWish.PriceMin,
+			PriceMax:      createdWish.PriceMax,
+			TitleKeywords: createdWish.TitleKeywords,
+		},
 		Photos:    photoResponses,
 		Status:    created.Status,
 		CreatedAt: created.CreatedAt,
+	}
+}
+
+func toReadResponses(items []Details) []ReadResponse {
+	responses := make([]ReadResponse, 0, len(items))
+	for _, found := range items {
+		responses = append(responses, toReadResponse(found))
+	}
+	return responses
+}
+
+func toReadResponse(found Details) ReadResponse {
+	photos := make([]PhotoResponse, 0, len(found.Photos))
+	for _, photo := range found.Photos {
+		photos = append(photos, PhotoResponse{ID: photo.ID, URL: photo.URL})
+	}
+
+	return ReadResponse{
+		ID:          found.Item.ID,
+		UserID:      found.Item.UserID,
+		Title:       found.Item.Title,
+		Description: found.Item.Description,
+		Condition:   found.Item.Condition,
+		Category: CategoryResponse{
+			ID:   found.Category.ID,
+			Name: found.Category.Name,
+		},
+		PriceMin: found.Item.PriceMin,
+		PriceMax: found.Item.PriceMax,
+		WantedCategory: CategoryResponse{
+			ID:   found.WantedCategory.ID,
+			Name: found.WantedCategory.Name,
+		},
+		Photos:    photos,
+		Status:    found.Item.Status,
+		CreatedAt: found.Item.CreatedAt,
+		UpdatedAt: found.Item.UpdatedAt,
 	}
 }

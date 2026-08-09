@@ -46,34 +46,60 @@ func (s *Service) GetChainsByItem(ctx context.Context, userId, wishedItemID int6
 	return s.repository.GetChainsByItem(ctx, userId, wishedItemID)
 }
 
-// TODO implement this
+// GetChainByID returns one chain visible to the current participant.
+func (s *Service) GetChainByID(ctx context.Context, chainID, userID int64) (exchange.Chain, error) {
+	if err := validatePositive("chain_id", chainID); err != nil {
+		return exchange.Chain{}, err
+	}
+	if err := validatePositive("user_id", userID); err != nil {
+		return exchange.Chain{}, err
+	}
 
-func (s *Service) AcceptChain(ctx context.Context, chainId, userId int64) (exchange.Chain, error) {
+	chain, err := s.repository.GetChainByID(ctx, chainID, userID)
+	if err != nil {
+		return exchange.Chain{}, fmt.Errorf("get chain by ID: %w", err)
+	}
 
-	return exchange.Chain{}, errors.New("[cb/service] Not implemented")
+	return chain, nil
+}
+
+// AcceptChain records the current participant's acceptance in PostgreSQL.
+func (s *Service) AcceptChain(ctx context.Context, chainID, userID int64) (AcceptResult, error) {
+	if err := validatePositive("chain_id", chainID); err != nil {
+		return AcceptResult{}, err
+	}
+	if err := validatePositive("user_id", userID); err != nil {
+		return AcceptResult{}, err
+	}
+
+	result, err := s.repository.AcceptChain(ctx, chainID, userID)
+	if err != nil {
+		return AcceptResult{}, fmt.Errorf("accept chain in PostgreSQL: %w", err)
+	}
+
+	return result, nil
 }
 
 // DeclineChain cancels a chain in PostgreSQL and records the rejected item in Redis.
-func (s *Service) DeclineChain(ctx context.Context, chainID, userID, receivedItemID int64) error {
+func (s *Service) DeclineChain(ctx context.Context, chainID, userID int64) (DeclineResult, error) {
 	if err := validatePositive("chain_id", chainID); err != nil {
-		return err
+		return DeclineResult{}, err
 	}
 	if err := validatePositive("user_id", userID); err != nil {
-		return err
-	}
-	if err := validatePositive("received_item_id", receivedItemID); err != nil {
-		return err
+		return DeclineResult{}, err
 	}
 	if s.rejectionStore == nil {
-		return errors.New("[cb/service] rejection store is not configured")
-	}
-	if _, err := s.repository.DeclineChain(ctx, chainID, userID); err != nil {
-		return fmt.Errorf("decline chain in PostgreSQL: %w", err)
+		return DeclineResult{}, errors.New("[cb/service] rejection store is not configured")
 	}
 
-	if err := s.rejectionStore.Reject(ctx, userID, receivedItemID); err != nil {
-		return fmt.Errorf("record rejected received item: %w", err)
+	result, err := s.repository.DeclineChain(ctx, chainID, userID)
+	if err != nil {
+		return DeclineResult{}, fmt.Errorf("decline chain in PostgreSQL: %w", err)
 	}
 
-	return nil
+	if err := s.rejectionStore.Reject(ctx, userID, result.ReceivedItemID); err != nil {
+		return DeclineResult{}, fmt.Errorf("record rejected received item: %w", err)
+	}
+
+	return result, nil
 }
