@@ -4,6 +4,7 @@ export type ApiErrorCode =
   | 'invalid_credentials'
   | 'invalid_token'
   | 'user_not_found'
+  | 'item_not_found'
   | 'too_many_photos'
   | 'internal_error'
 

@@ -12,6 +12,14 @@ export interface PhotoResponse {
   url: string
 }
 
+export interface WishSummary {
+  id: number
+  category: CategoryResponse
+  price_min: number
+  price_max: number
+  title_keywords: string
+}
+
 export interface Item {
   id: number
   title: string
@@ -21,6 +29,7 @@ export interface Item {
   price_min: number
   price_max: number
   wanted_category: CategoryResponse
+  wish: WishSummary
   photos: PhotoResponse[]
   status: Status
   created_at: string
