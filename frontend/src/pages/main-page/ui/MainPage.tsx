@@ -51,14 +51,16 @@ export const MainPage = observer(() => {
         <div className={styles.empty}>
           <span className={styles['empty-title']}>Пока нет ни одной вещи</span>
           <span className={styles['empty-text']}>Добавьте вещь, чтобы начать поиск обмена</span>
-          <Link to="/items/new">
+          <Link to="/item/new">
             <Button className={styles['add-button']}>+ Добавить вещь</Button>
           </Link>
         </div>
       ) : (
         <div className={styles.grid}>
           {items.map((item) => (
-            <ItemCard key={item.id} item={item} />
+            <Link key={item.id} to={`/item/${item.id}`} className={styles['card-link']}>
+              <ItemCard item={item} />
+            </Link>
           ))}
         </div>
       )}

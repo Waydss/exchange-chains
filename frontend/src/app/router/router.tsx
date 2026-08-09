@@ -4,6 +4,7 @@ import { RequireAuth } from '@app/providers/RequireAuth'
 import { AppLayout } from '@app/layouts/AppLayout'
 import { MainPage } from '@pages/main-page'
 import { AddItemPage } from '@pages/add-item-page'
+import { ItemPage } from '@pages/item-page'
 import { ProfilePage } from '@pages/profile-page'
 import { NotFoundPage } from '@pages/not-found-page'
 import { LoginPage } from '@pages/login-page'
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <MainPage /> },
       { path: 'item/new', element: <AddItemPage /> },
+      { path: 'item/:itemId', element: <ItemPage /> },
       { path: 'profile', element: <ProfilePage /> },
     ],
   },
