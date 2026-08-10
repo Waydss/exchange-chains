@@ -39,6 +39,12 @@
   gap: 20px;
 }
 
+.card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
 .skeleton-card {
   display: flex;
   flex-direction: column;
