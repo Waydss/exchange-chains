@@ -25,16 +25,26 @@ class SessionStore {
   setSession(result: AuthResult): void {
     this.user = result.user
     this.accessToken = result.access_token
-    storage.set<PersistedSession>(SESSION_STORAGE_KEY, {
-      user: result.user,
-      accessToken: result.access_token,
-    })
+    this.persist()
+  }
+
+  setUser(user: PublicUser): void {
+    this.user = user
+    this.persist()
   }
 
   clear(): void {
     this.user = null
     this.accessToken = null
     storage.remove(SESSION_STORAGE_KEY)
+  }
+
+  private persist(): void {
+    if (!this.user || !this.accessToken) return
+    storage.set<PersistedSession>(SESSION_STORAGE_KEY, {
+      user: this.user,
+      accessToken: this.accessToken,
+    })
   }
 
   private hydrate(): void {

@@ -12,16 +12,9 @@ export interface PhotoResponse {
   url: string
 }
 
-export interface WishSummary {
-  id: number
-  category: CategoryResponse
-  price_min: number
-  price_max: number
-  title_keywords: string
-}
-
 export interface Item {
   id: number
+  user_id?: number
   title: string
   description: string
   condition: Condition
@@ -29,10 +22,10 @@ export interface Item {
   price_min: number
   price_max: number
   wanted_category: CategoryResponse
-  wish: WishSummary
   photos: PhotoResponse[]
   status: Status
   created_at: string
+  updated_at?: string
 }
 
 export interface CreateItemInput {
@@ -43,5 +36,6 @@ export interface CreateItemInput {
   price_min: number
   price_max: number
   wanted_category_name: string
-  photos: PhotoResponse[]
+  wanted_title_keywords: string
+  photos: File[]
 }
