@@ -13,7 +13,7 @@ interface RegisterFormValues {
   confirmPassword: string
 }
 
-const LOGIN_PATTERN = /^[a-zA-Z0-9._-]+$/
+const LOGIN_PATTERN = /^[a-z0-9][a-z0-9_]*$/
 
 export const RegisterForm = () => {
   const navigate = useNavigate()
@@ -59,7 +59,7 @@ export const RegisterForm = () => {
         rules={[
           { required: true, message: 'Введите логин' },
           { min: 3, max: 32, message: 'Логин должен быть от 3 до 32 символов' },
-          { pattern: LOGIN_PATTERN, message: 'Допустимы латинские буквы, цифры, точка, дефис и подчёркивание' },
+          { pattern: LOGIN_PATTERN, message: 'Строчные латинские буквы, цифры и подчёркивание, начиная с буквы или цифры' },
         ]}
       >
         <Input className={styles.input} autoComplete="username" placeholder="Логин" />
