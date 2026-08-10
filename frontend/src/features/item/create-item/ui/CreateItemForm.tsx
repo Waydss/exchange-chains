@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Alert, Button, ConfigProvider, Form, Input, InputNumber, Select, Upload } from 'antd'
 import type { UploadFile, UploadProps } from 'antd'
 import { observer } from 'mobx-react-lite'
-import { sessionStore } from '@entities/session'
-import { CONDITION_LABELS, type Condition, type PhotoResponse } from '@entities/item'
+import { CONDITION_LABELS, type Condition } from '@entities/item'
 import { itemApi } from '@shared/api/itemApi'
 import { CATEGORY_NAMES } from '@shared/config/categories'
 import { formatPriceRange } from '@shared/lib/formatPrice'
@@ -31,6 +30,7 @@ interface CreateItemFormValues {
   price: number
   tolerancePercent: number
   wantedCategoryName: string
+  wantedTitleKeywords: string
 }
 
 function computePriceRange(price: number, tolerancePercent: number): { min: number; max: number } {
@@ -44,7 +44,6 @@ export const CreateItemForm = observer(() => {
   const [form] = Form.useForm<CreateItemFormValues>()
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const [photos, setPhotos] = useState<PhotoResponse[]>([])
   const [fileList, setFileList] = useState<UploadFile[]>([])
 
   const price = Form.useWatch('price', form)
@@ -57,15 +56,14 @@ export const CreateItemForm = observer(() => {
   }, [price, tolerancePercent])
 
   const handleFinish = async (values: CreateItemFormValues) => {
-    const userId = sessionStore.user?.id
-    if (!userId) return
-
     setFormError(null)
     setSubmitting(true)
 
     try {
       const { min, max } = computePriceRange(values.price, values.tolerancePercent)
-      await itemApi.create(userId, {
+      const photos = fileList.map((file) => file.originFileObj).filter(Boolean) as File[]
+
+      await itemApi.create({
         title: values.title,
         description: values.description ?? '',
         condition: values.condition,
@@ -73,6 +71,7 @@ export const CreateItemForm = observer(() => {
         price_min: min,
         price_max: max,
         wanted_category_name: values.wantedCategoryName,
+        wanted_title_keywords: values.wantedTitleKeywords,
         photos,
       })
       navigate('/', { replace: true })
@@ -89,22 +88,8 @@ export const CreateItemForm = observer(() => {
     accept: 'image/jpeg,image/png,image/webp',
     maxCount: MAX_PHOTOS,
     multiple: true,
-    customRequest: async ({ file, onSuccess, onError }) => {
-      try {
-        const uploaded = await itemApi.uploadPhoto(file as File)
-        setPhotos((previous) => [...previous, uploaded])
-        onSuccess?.(uploaded)
-      } catch (error) {
-        onError?.(error as Error)
-      }
-    },
+    beforeUpload: () => false,
     onChange: ({ fileList: nextFileList }) => setFileList(nextFileList),
-    onRemove: (file) => {
-      const response = file.response as PhotoResponse | undefined
-      if (response) {
-        setPhotos((previous) => previous.filter((photo) => photo.id !== response.id))
-      }
-    },
   }
 
   return (
@@ -201,6 +186,15 @@ export const CreateItemForm = observer(() => {
                 placeholder="Выберите категорию"
                 options={CATEGORY_OPTIONS}
               />
+            </Form.Item>
+
+            <Form.Item
+              className={styles['form-item']}
+              name="wantedTitleKeywords"
+              label="Что именно ищу"
+              rules={[{ required: true, message: 'Опишите, что хотите получить' }]}
+            >
+              <Input className={styles.input} placeholder="Акустическая гитара, 6 струн" />
             </Form.Item>
 
             <Form.Item className={styles['form-item']} label="Фото объявления">

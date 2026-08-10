@@ -23,9 +23,14 @@ export const ItemPage = observer(() => {
     setItem(null)
     setChains(null)
 
-    itemApi.getById(userId, Number(itemId)).then(async (loadedItem) => {
+    itemApi.getById(Number(itemId)).then(async (loadedItem) => {
       if (cancelled) return
       setItem(loadedItem)
+
+      if (!loadedItem.wish) {
+        setChains([])
+        return
+      }
 
       const loadedChains = await chainApi.getByWishedItemId(userId, loadedItem.wish.id)
       if (cancelled) return
@@ -83,13 +88,15 @@ export const ItemPage = observer(() => {
           </span>
         </div>
 
-        <div className={styles['wish-card']}>
-          <span className={styles['wish-label']}>Хочу взамен</span>
-          <span className={styles['wish-category']}>{item.wish.category.name}</span>
-          <span className={styles['wish-price']}>
-            {formatPriceRange(item.wish.price_min, item.wish.price_max)}
-          </span>
-        </div>
+        {item.wish && (
+          <div className={styles['wish-card']}>
+            <span className={styles['wish-label']}>Хочу взамен</span>
+            <span className={styles['wish-category']}>{item.wish.category.name}</span>
+            <span className={styles['wish-price']}>
+              {formatPriceRange(item.wish.price_min, item.wish.price_max)}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className={styles.section}>

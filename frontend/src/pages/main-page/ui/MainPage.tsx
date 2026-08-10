@@ -17,7 +17,7 @@ export const MainPage = observer(() => {
 
     let cancelled = false
     setLoading(true)
-    itemApi.listMine(userId).then((result) => {
+    itemApi.listMine().then((result) => {
       if (!cancelled) {
         setItems(result)
         setLoading(false)
