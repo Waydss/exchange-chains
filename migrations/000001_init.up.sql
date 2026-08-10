@@ -12,21 +12,21 @@ CREATE TABLE users (
         CHECK (LENGTH(TRIM(login)) > 0)
 );
 
-CREATE TABLE user_ratings (
-    id NOT NULL BIGSERIAL PRIMARY KEY,
-    from_id BIGINT NOT NULL REFERENCES users(id),
-    to_id BIGINT NOT NULL REFERENCES users(id),
-    barter_id BIGINT NOT NULL REFERENCES chain_barters(id),
-    public_rating NUMERIC(3, 2),
+CREATE TABLE user_shadow_registry (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL,
+    amount INTEGER NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT user_shadow_registry_reason_not_empty
+        CHECK (LENGTH(BTRIM(reason)) > 0),
+    CONSTRAINT user_shadow_registry_amount_positive
+        CHECK (amount > 0)
 );
 
-CREATE TABLE user_shadow_registry (
-    id BIGSERIAL PRIMARY KEY, 
-    user_id BIGINT
-    reason TEXT
-    amount INTEGER
-);
+CREATE INDEX user_shadow_registry_user_id_idx ON user_shadow_registry (user_id);
+CREATE INDEX user_shadow_registry_created_at_idx ON user_shadow_registry (created_at);
 
 CREATE TABLE categories (
     id BIGSERIAL PRIMARY KEY,
@@ -196,3 +196,23 @@ CREATE INDEX chain_barters_to_user_id_idx ON chain_barters (to_user_id);
 CREATE INDEX chain_barters_give_item_id_idx ON chain_barters (give_item_id);
 CREATE INDEX chain_barters_wish_id_idx ON chain_barters (wish_id);
 CREATE INDEX chain_barters_status_idx ON chain_barters (status);
+
+CREATE TABLE user_ratings (
+    id BIGSERIAL PRIMARY KEY,
+    from_id BIGINT NOT NULL REFERENCES users(id),
+    to_id BIGINT NOT NULL REFERENCES users(id),
+    barter_id BIGINT NOT NULL REFERENCES chain_barters(id),
+    public_rating NUMERIC(3, 2) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT user_ratings_users_differ
+        CHECK (from_id <> to_id),
+    CONSTRAINT user_ratings_public_rating_valid
+        CHECK (public_rating >= 0 AND public_rating <= 5),
+    CONSTRAINT user_ratings_once_per_barter
+        UNIQUE (from_id, to_id, barter_id)
+);
+
+CREATE INDEX user_ratings_to_id_idx ON user_ratings (to_id);
+CREATE INDEX user_ratings_from_id_idx ON user_ratings (from_id);
+CREATE INDEX user_ratings_barter_id_idx ON user_ratings (barter_id);
