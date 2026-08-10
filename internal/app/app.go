@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/L-ka080/DDB-6-case/internal/barter"
+	barterpostgres "github.com/L-ka080/DDB-6-case/internal/barter/postgres"
 	"github.com/L-ka080/DDB-6-case/internal/category"
 	cb "github.com/L-ka080/DDB-6-case/internal/chain_builder"
 	"github.com/L-ka080/DDB-6-case/internal/config"
@@ -38,6 +40,7 @@ type repositories struct {
 	item     item.Repository
 	wish     wish.Repository
 	chain    cb.Repository
+	barter   barter.Repository
 }
 
 type services struct {
@@ -45,14 +48,16 @@ type services struct {
 	item           *item.Service
 	wish           *wish.Service
 	chain          *cb.Service
+	barter         *barter.Service
 	rejectionStore cb.RejectionStore
 }
 
 type handlers struct {
-	user  *user.Handler
-	item  *item.Handler
-	wish  *wish.Handler
-	chain *cb.Handler
+	user   *user.Handler
+	item   *item.Handler
+	wish   *wish.Handler
+	chain  *cb.Handler
+	barter *transporthttp.BarterHandler
 }
 
 func New() (*App, error) {
@@ -133,6 +138,13 @@ func New() (*App, error) {
 			AcceptChain:    handlers.chain.AcceptChain,
 			DeclineChain:   handlers.chain.DeclineChain,
 			AuthMiddleware: middleware.Auth(jwtProvider),
+
+			SelectBarterMethod:      handlers.barter.SelectTransferMethod,
+			MarkBarterGiven:         handlers.barter.MarkGiven,
+			ConfirmBarterReceived:   handlers.barter.ConfirmReceived,
+			RejectBarter:            handlers.barter.Reject,
+			MarkBarterReturnStarted: handlers.barter.MarkReturnStarted,
+			ConfirmBarterReturned:   handlers.barter.ConfirmReturned,
 		},
 	)
 
@@ -217,6 +229,7 @@ func newRepositories(pool *pgxpool.Pool) repositories {
 		item:     item.NewPostgresRepository(pool),
 		wish:     wish.NewPostgresRepository(pool),
 		chain:    cb.NewPostgresRepository(pool),
+		barter:   barterpostgres.NewRepository(pool),
 	}
 }
 
@@ -234,22 +247,25 @@ func newServices(
 	chainService := cb.NewService(repositories.chain, userService, rejectionStore)
 	itemService := item.NewService(repositories.item, repositories.category, fileStorage, cfg.Upload.MaxItemPhotos, chainService)
 	wishService := wish.NewService(repositories.wish)
+	barterService := barter.NewService(repositories.barter)
 
 	return services{
 		user:           userService,
 		item:           itemService,
 		wish:           wishService,
 		chain:          chainService,
+		barter:         barterService,
 		rejectionStore: rejectionStore,
 	}
 }
 
 func newHandlers(cfg *config.Config, services services) handlers {
 	return handlers{
-		user:  user.NewHandler(services.user),
-		item:  item.NewHandler(services.item, cfg.Upload.MaxFileSize, cfg.Upload.MaxItemPhotos),
-		wish:  wish.NewHandler(services.wish),
-		chain: cb.NewHandler(services.chain),
+		user:   user.NewHandler(services.user),
+		item:   item.NewHandler(services.item, cfg.Upload.MaxFileSize, cfg.Upload.MaxItemPhotos),
+		wish:   wish.NewHandler(services.wish),
+		chain:  cb.NewHandler(services.chain),
+		barter: transporthttp.NewBarterHandler(services.barter),
 	}
 }
 

@@ -17,6 +17,7 @@ const (
 	StatusPending    Status = "pending"
 	StatusLocked     Status = "locked"
 	StatusInDelivery Status = "in_delivery"
+	StatusReturning  Status = "returning"
 	StatusCompleted  Status = "completed"
 	StatusCancelled  Status = "cancelled"
 	StatusDisputed   Status = "disputed"
@@ -43,6 +44,7 @@ const (
 	BarterGiven          BarterStatus = "given"
 	BarterReceived       BarterStatus = "received"
 	BarterRejected       BarterStatus = "rejected"
+	BarterReturning      BarterStatus = "returning"
 	BarterReturned       BarterStatus = "returned"
 )
 
@@ -130,6 +132,7 @@ type Barter struct {
 	GivenAt         *time.Time
 	ReceivedAt      *time.Time
 	RejectedAt      *time.Time
+	ReturnStartedAt *time.Time
 	ReturnedAt      *time.Time
 	RejectionReason string
 	CreatedAt       time.Time

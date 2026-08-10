@@ -133,7 +133,7 @@ CREATE TABLE chains (
     CONSTRAINT chains_signature_not_empty
         CHECK (LENGTH(BTRIM(signature)) > 0),
     CONSTRAINT chains_status_valid
-        CHECK (status IN ('matched', 'pending', 'locked', 'in_delivery', 'completed', 'cancelled', 'disputed')),
+        CHECK (status IN ('matched', 'pending', 'locked', 'in_delivery', 'returning', 'completed', 'cancelled', 'disputed')),
     CONSTRAINT chains_score_non_negative
         CHECK (score >= 0)
 );
@@ -174,6 +174,7 @@ CREATE TABLE chain_barters (
     given_at TIMESTAMPTZ,
     received_at TIMESTAMPTZ,
     rejected_at TIMESTAMPTZ,
+    return_started_at TIMESTAMPTZ,
     returned_at TIMESTAMPTZ,
     rejection_reason TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -183,7 +184,7 @@ CREATE TABLE chain_barters (
     CONSTRAINT chain_barters_users_differ
         CHECK (from_user_id <> to_user_id),
     CONSTRAINT chain_barters_status_valid
-        CHECK (status IN ('pending', 'method_selected', 'given', 'received', 'rejected', 'returned')),
+        CHECK (status IN ('pending', 'method_selected', 'given', 'received', 'rejected', 'returning', 'returned')),
     CONSTRAINT chain_barters_transfer_method_valid
         CHECK (transfer_method IS NULL OR transfer_method IN ('meetup', 'delivery')),
     CONSTRAINT chain_barters_position_unique

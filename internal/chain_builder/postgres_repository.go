@@ -8,6 +8,7 @@ import (
 	"github.com/L-ka080/DDB-6-case/internal/exchange"
 	"github.com/L-ka080/DDB-6-case/internal/item"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -728,7 +729,8 @@ func (r *PostgresRepository) getChains(ctx context.Context, where string, args .
 
 	const barterQuery = `
 		SELECT cb.id, cb.chain_id, cb.position, cb.from_user_id, cb.to_user_id,
-		       cb.status,
+		       cb.status, cb.transfer_method, cb.given_at, cb.received_at,
+		       cb.rejected_at, cb.return_started_at, cb.returned_at, cb.rejection_reason,
 		       cb.give_item_id, gi.user_id, gi.title, gi.category_id, gi.price_min, gi.price_max, gi.status,
 		       cb.wish_id, w.user_id, w.category_id, w.price_min, w.price_max, w.title_keywords
 		FROM chain_barters AS cb
@@ -747,6 +749,7 @@ func (r *PostgresRepository) getChains(ctx context.Context, where string, args .
 		var barter exchange.Barter
 		var chainID, giveID, wishID, position int64
 		var status, giveStatus string
+		var transferMethod pgtype.Text
 		if err := barterRows.Scan(
 			&barter.ID,
 			&chainID,
@@ -754,6 +757,13 @@ func (r *PostgresRepository) getChains(ctx context.Context, where string, args .
 			&barter.From,
 			&barter.To,
 			&status,
+			&transferMethod,
+			&barter.GivenAt,
+			&barter.ReceivedAt,
+			&barter.RejectedAt,
+			&barter.ReturnStartedAt,
+			&barter.ReturnedAt,
+			&barter.RejectionReason,
 			&giveID,
 			&barter.Give.UserID,
 			&barter.Give.Title,
@@ -774,6 +784,10 @@ func (r *PostgresRepository) getChains(ctx context.Context, where string, args .
 		barter.Wish.ID = wishID
 		barter.Give.Status = item.Status(giveStatus)
 		barter.Status = exchange.BarterStatus(status)
+		if transferMethod.Valid {
+			method := exchange.TransferMethod(transferMethod.String)
+			barter.TransferMethod = &method
+		}
 		idx, ok := chainIndex[chainID]
 		if !ok {
 			continue

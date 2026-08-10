@@ -55,13 +55,20 @@ type ChainParticipantReadDTO struct {
 
 // BarterReadDTO is the read-only representation of one barter inside a chain.
 type BarterReadDTO struct {
-	ID       int64       `json:"id"`
-	Position int64       `json:"position"`
-	From     int64       `json:"from_user_id"`
-	To       int64       `json:"to_user_id"`
-	Give     GiveReadDTO `json:"give"`
-	Wish     WishReadDTO `json:"wish"`
-	Status   string      `json:"status"`
+	ID              int64                    `json:"id"`
+	Position        int64                    `json:"position"`
+	From            int64                    `json:"from_user_id"`
+	To              int64                    `json:"to_user_id"`
+	Give            GiveReadDTO              `json:"give"`
+	Wish            WishReadDTO              `json:"wish"`
+	Status          string                   `json:"status"`
+	TransferMethod  *exchange.TransferMethod `json:"transfer_method,omitempty"`
+	GivenAt         *time.Time               `json:"given_at,omitempty"`
+	ReceivedAt      *time.Time               `json:"received_at,omitempty"`
+	RejectedAt      *time.Time               `json:"rejected_at,omitempty"`
+	ReturnStartedAt *time.Time               `json:"return_started_at,omitempty"`
+	ReturnedAt      *time.Time               `json:"returned_at,omitempty"`
+	RejectionReason string                   `json:"rejection_reason,omitempty"`
 }
 
 // GiveReadDTO is the read-only representation of an offered item.
@@ -113,8 +120,15 @@ func newChainReadDTO(chain exchange.Chain) ChainReadDTO {
 				PriceMax:   barter.Give.PriceMax,
 				Status:     string(barter.Give.Status),
 			},
-			Wish:   newWishReadDTO(barter.Wish),
-			Status: string(barter.Status),
+			Wish:            newWishReadDTO(barter.Wish),
+			Status:          string(barter.Status),
+			TransferMethod:  barter.TransferMethod,
+			GivenAt:         barter.GivenAt,
+			ReceivedAt:      barter.ReceivedAt,
+			RejectedAt:      barter.RejectedAt,
+			ReturnStartedAt: barter.ReturnStartedAt,
+			ReturnedAt:      barter.ReturnedAt,
+			RejectionReason: barter.RejectionReason,
 		})
 	}
 
