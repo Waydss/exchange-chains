@@ -9,6 +9,8 @@ export type ApiErrorCode =
   | 'item_not_found'
   | 'category_not_found'
   | 'wanted_category_not_found'
+  | 'wish_not_found'
+  | 'not_found'
   | 'too_many_photos'
   | 'unsupported_image_type'
   | 'image_too_large'

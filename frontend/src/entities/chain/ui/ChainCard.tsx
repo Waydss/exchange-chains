@@ -1,5 +1,4 @@
 import { Button } from 'antd'
-import { mockCategoryStore } from '@shared/api/mockCategoryStore'
 import { formatPriceRange } from '@shared/lib/formatPrice'
 import { getReceivedBarter } from '../model/chainHelpers'
 import type { Chain } from '../model/types'
@@ -15,7 +14,6 @@ export const ChainCard = ({ chain, userId }: ChainCardProps) => {
   if (!receivedBarter) return null
 
   const give = receivedBarter.give
-  const category = mockCategoryStore.getById(give.category_id)
 
   return (
     <div className={styles.card}>
@@ -25,9 +23,7 @@ export const ChainCard = ({ chain, userId }: ChainCardProps) => {
 
       <div className={styles.body}>
         <span className={styles.title}>{give.title}</span>
-        <span className={styles.subtitle}>
-          {category?.name ?? 'Категория'} · {formatPriceRange(give.price_min, give.price_max)}
-        </span>
+        <span className={styles.subtitle}>{formatPriceRange(give.price_min, give.price_max)}</span>
         <span className={styles.length}>цепочка из {chain.barters.length}</span>
         {/* Детали цепочки и подтверждение участия — следующая таска, пока заглушка */}
         <Button className={styles.button} disabled>

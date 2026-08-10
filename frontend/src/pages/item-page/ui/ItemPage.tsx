@@ -7,8 +7,12 @@ import { STATUS_META, type Item } from '@entities/item'
 import { ChainCard, type Chain } from '@entities/chain'
 import { itemApi } from '@shared/api/itemApi'
 import { chainApi } from '@shared/api/chainApi'
+import { wishApi } from '@shared/api/wishApi'
+import { storage } from '@shared/lib/storage'
 import { formatPriceRange } from '@shared/lib/formatPrice'
 import styles from './ItemPage.module.scss'
+
+const SEARCH_STARTED_KEY_PREFIX = 'chain_search_started:'
 
 export const ItemPage = observer(() => {
   const { itemId } = useParams<{ itemId: string }>()
@@ -27,14 +31,37 @@ export const ItemPage = observer(() => {
       if (cancelled) return
       setItem(loadedItem)
 
-      if (!loadedItem.wish) {
+      // У бэка нет прямой связи item -> wish (ни wish_id на item, ни item_id на wish),
+      // а желание создаётся вместе с вещью с точно её price_min/price_max и wanted_category —
+      // это единственные поля, по которым его можно однозначно найти среди GET /wishes.
+      const wishes = await wishApi.listMine()
+      if (cancelled) return
+
+      const matchedWish = wishes
+        .filter(
+          (wish) =>
+            wish.category.id === loadedItem.wanted_category.id &&
+            wish.price_min === loadedItem.price_min &&
+            wish.price_max === loadedItem.price_max,
+        )
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
+
+      if (!matchedWish) {
         setChains([])
         return
       }
 
-      const loadedChains = await chainApi.getByWishedItemId(userId, loadedItem.wish.id)
+      const loadedChains = await chainApi.getByWishedItemId(userId, matchedWish.id)
       if (cancelled) return
       setChains(loadedChains)
+
+      if (loadedChains.length === 0) {
+        const searchStartedKey = `${SEARCH_STARTED_KEY_PREFIX}${matchedWish.id}`
+        if (!storage.get<boolean>(searchStartedKey)) {
+          await chainApi.startSearch(userId, matchedWish.id)
+          storage.set(searchStartedKey, true)
+        }
+      }
     })
 
     return () => {
@@ -88,15 +115,13 @@ export const ItemPage = observer(() => {
           </span>
         </div>
 
-        {item.wish && (
-          <div className={styles['wish-card']}>
-            <span className={styles['wish-label']}>Хочу взамен</span>
-            <span className={styles['wish-category']}>{item.wish.category.name}</span>
-            <span className={styles['wish-price']}>
-              {formatPriceRange(item.wish.price_min, item.wish.price_max)}
-            </span>
-          </div>
-        )}
+        <div className={styles['wish-card']}>
+          <span className={styles['wish-label']}>Хочу взамен</span>
+          <span className={styles['wish-category']}>{item.wanted_category.name}</span>
+          <span className={styles['wish-price']}>
+            {formatPriceRange(item.price_min, item.price_max)}
+          </span>
+        </div>
       </div>
 
       <div className={styles.section}>

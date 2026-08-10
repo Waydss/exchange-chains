@@ -4,7 +4,7 @@ export type ChainStatus =
 export type ParticipantStatus = 'pending' | 'accepted' | 'declined' | 'expired'
 
 export type BarterStatus =
-  'pending' | 'method_selected' | 'given' | 'received' | 'rejected' | 'returned'
+  'pending' | 'method_selected' | 'given' | 'received' | 'rejected' | 'returning' | 'returned'
 
 export interface GiveItem {
   id: number
