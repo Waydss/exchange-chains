@@ -194,7 +194,7 @@ func (r *PostgresRepository) UpdatePublicRating(ctx context.Context, fromId int6
 	return average, total, nil
 }
 
-// FIXME We currently don't have TTL on the user_shadow_registry table, so the shadow rating is permenant for each user for now
+// FIXME We currently don't have TTL in the user_shadow_registry table, so the shadow rating is permanent for each user for now
 
 func (r *PostgresRepository) UpdateShadowRating(ctx context.Context, userId int64, reasonString string) error {
 	amount, err := getShadowScore(reasonString)
