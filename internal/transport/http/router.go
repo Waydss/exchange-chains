@@ -37,6 +37,13 @@ type Routes struct {
 	AcceptChain    gin.HandlerFunc
 	DeclineChain   gin.HandlerFunc
 	AuthMiddleware gin.HandlerFunc
+
+	SelectBarterMethod      gin.HandlerFunc
+	MarkBarterGiven         gin.HandlerFunc
+	ConfirmBarterReceived   gin.HandlerFunc
+	RejectBarter            gin.HandlerFunc
+	MarkBarterReturnStarted gin.HandlerFunc
+	ConfirmBarterReturned   gin.HandlerFunc
 }
 
 func NewRouter(
@@ -81,6 +88,12 @@ func NewRouter(
 	protected.GET("/chains/:chainId", routes.GetChainByID)
 	protected.POST("/chains/:chainId/accept", routes.AcceptChain)
 	protected.POST("/chains/:chainId/decline", routes.DeclineChain)
+	protected.POST("/chains/:chainId/barters/:barterId/method", routes.SelectBarterMethod)
+	protected.POST("/chains/:chainId/barters/:barterId/given", routes.MarkBarterGiven)
+	protected.POST("/chains/:chainId/barters/:barterId/received", routes.ConfirmBarterReceived)
+	protected.POST("/chains/:chainId/barters/:barterId/rejected", routes.RejectBarter)
+	protected.POST("/chains/:chainId/barters/:barterId/return-started", routes.MarkBarterReturnStarted)
+	protected.POST("/chains/:chainId/barters/:barterId/returned", routes.ConfirmBarterReturned)
 	protected.POST("/ratings", routes.UpdatePublicRating)
 	protected.GET("/ratings", routes.GetUserRatings)
 
